@@ -2,7 +2,7 @@ from typing import Optional, List
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import login_required, login_user, logout_user, current_user
 from models.models import User, Admin
-from web.app import db  # Импортируем db из app.py
+from web.app import db
 from werkzeug.security import check_password_hash
 import logging
 
@@ -70,6 +70,8 @@ def init_routes(app: Flask) -> None:
                 user.full_name = request.form.get("full_name")
                 user.phone = request.form.get("phone")
                 user.email = request.form.get("email")
+                user.username = request.form.get("username")
+                user.language_code = request.form.get("language_code")
                 db.session.commit()
                 flash("Данные пользователя обновлены")
                 logger.info(f"Данные пользователя {user_id} обновлены")

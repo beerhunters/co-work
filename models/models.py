@@ -26,9 +26,15 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
     first_join_time = Column(DateTime, default=datetime.utcnow)
-    full_name = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    email = Column(String, nullable=False)
+    full_name = Column(String)
+    phone = Column(String)
+    email = Column(String)
+    username = Column(String)  # Новое поле для username
+    successful_bookings = Column(
+        Integer, default=0
+    )  # Новое поле для успешных бронирований
+    language_code = Column(String, default="ru")  # Новое поле для кода языка
+    reg_date = Column(DateTime)
 
 
 class Admin(Base):
@@ -40,7 +46,6 @@ class Admin(Base):
     login = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
 
-    # Методы для Flask-Login
     @property
     def is_active(self) -> bool:
         """Активен ли пользователь."""
@@ -66,17 +71,25 @@ def init_db() -> None:
     engine = create_engine(
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
-    # Настройка WAL-режима через соединение
     with engine.connect() as connection:
+        # Настройка WAL-режима
         connection.execute(text("PRAGMA journal_mode=WAL"))
         logger.info("WAL-режим успешно включён")
-    # Создание таблиц
-    Base.metadata.create_all(engine)
-    logger.info("Таблицы базы данных созданы")
+
+        # Создание таблиц
+        Base.metadata.create_all(engine)
+        logger.info("Таблицы базы данных созданы")
 
 
-def add_user(telegram_id: int, full_name: str, phone: str, email: str) -> None:
-    """Добавление нового пользователя в БД."""
+def add_user(
+    telegram_id: int,
+    full_name: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    username: Optional[str] = None,
+    reg_date: Optional[datetime] = None,
+) -> None:
+    """Добавление или обновление пользователя в БД."""
     engine = create_engine(
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
@@ -84,15 +97,38 @@ def add_user(telegram_id: int, full_name: str, phone: str, email: str) -> None:
     session = Session()
 
     try:
-        user = User(
-            telegram_id=telegram_id, full_name=full_name, phone=phone, email=email
-        )
-        session.add(user)
+        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        if user:
+            # Обновляем существующие поля, если они переданы
+            if full_name:
+                user.full_name = full_name
+            if phone:
+                user.phone = phone
+            if email:
+                user.email = email
+            if username:
+                user.username = username
+        else:
+            # Создаём нового пользователя
+            user = User(
+                telegram_id=telegram_id,
+                full_name=full_name,
+                phone=phone,
+                email=email,
+                username=username,
+                first_join_time=datetime.utcnow(),
+                successful_bookings=0,
+                language_code="ru",
+                reg_date=reg_date or datetime.utcnow(),
+            )
+            session.add(user)
         session.commit()
-        logger.info(f"Пользователь {telegram_id} добавлен в БД")
+        logger.info(f"Пользователь {telegram_id} добавлен или обновлён в БД")
     except Exception as e:
         session.rollback()
-        logger.error(f"Ошибка добавления пользователя {telegram_id}: {str(e)}")
+        logger.error(
+            f"Ошибка добавления/обновления пользователя {telegram_id}: {str(e)}"
+        )
         raise
     finally:
         session.close()

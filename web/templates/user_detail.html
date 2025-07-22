@@ -9,25 +9,45 @@
     <div class="mb-3">
         <label class="form-label">ФИО</label>
         {% if edit %}
-        <input type="text" class="form-control" name="full_name" value="{{ user.full_name }}" required>
+        <input type="text" class="form-control" name="full_name" value="{{ user.full_name or '' }}" required>
         {% else %}
-        <p>{{ user.full_name }}</p>
+        <p>{{ user.full_name or 'Не указано' }}</p>
         {% endif %}
     </div>
     <div class="mb-3">
         <label class="form-label">Телефон</label>
         {% if edit %}
-        <input type="text" class="form-control" name="phone" value="{{ user.phone }}" required>
+        <input type="text" class="form-control" name="phone" value="{{ user.phone or '' }}" required>
         {% else %}
-        <p>{{ user.phone }}</p>
+        <p>{{ user.phone or 'Не указано' }}</p>
         {% endif %}
     </div>
     <div class="mb-3">
         <label class="form-label">Email</label>
         {% if edit %}
-        <input type="email" class="form-control" name="email" value="{{ user.email }}" required>
+        <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" required>
         {% else %}
-        <p>{{ user.email }}</p>
+        <p>{{ user.email or 'Не указано' }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Username</label>
+        {% if edit %}
+        <input type="text" class="form-control" name="username" value="{{ user.username or '' }}">
+        {% else %}
+        <p>{{ user.username or 'Не указано' }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Успешные бронирования</label>
+        <p>{{ user.successful_bookings }}</p>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Код языка</label>
+        {% if edit %}
+        <input type="text" class="form-control" name="language_code" value="{{ user.language_code or 'ru' }}">
+        {% else %}
+        <p>{{ user.language_code or 'ru' }}</p>
         {% endif %}
     </div>
     <div class="mb-3">
