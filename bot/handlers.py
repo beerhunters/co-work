@@ -1,4 +1,3 @@
-import datetime
 from typing import Any, Optional
 from aiogram import Router, F, Dispatcher
 from aiogram.filters import Command
@@ -7,6 +6,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import re
 from models.models import User, add_user
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
 import logging
 
 router = Router()
@@ -25,8 +27,6 @@ class Registration(StatesGroup):
 async def cmd_start(message: Message, state: FSMContext) -> None:
     """Обработчик команды /start."""
     from models.models import init_db
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy import create_engine
 
     init_db()  # Инициализация базы данных
     logger.info(f"Пользователь {message.from_user.id} начал взаимодействие")
@@ -102,14 +102,13 @@ async def process_email(message: Message, state: FSMContext) -> None:
 
     data = await state.get_data()
     try:
-        reg_date = datetime.datetime.now()
         add_user(
             telegram_id=message.from_user.id,
             full_name=data["full_name"],
             phone=data["phone"],
             email=email,
             username=message.from_user.username,
-            reg_date=reg_date,
+            reg_date=datetime.utcnow(),  # Устанавливаем reg_date при завершении регистрации
         )
         await message.answer("Регистрация завершена!")
         logger.info(f"Пользователь {message.from_user.id} успешно зарегистрирован")

@@ -25,15 +25,13 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
-    first_join_time = Column(DateTime, default=datetime.utcnow)
+    first_join_time = Column(DateTime, default=datetime.utcnow, nullable=False)
     full_name = Column(String)
     phone = Column(String)
     email = Column(String)
-    username = Column(String)  # Новое поле для username
-    successful_bookings = Column(
-        Integer, default=0
-    )  # Новое поле для успешных бронирований
-    language_code = Column(String, default="ru")  # Новое поле для кода языка
+    username = Column(String)
+    successful_bookings = Column(Integer, default=0)
+    language_code = Column(String, default="ru")
     reg_date = Column(DateTime)
 
 
@@ -100,26 +98,28 @@ def add_user(
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
             # Обновляем существующие поля, если они переданы
-            if full_name:
+            if full_name is not None:
                 user.full_name = full_name
-            if phone:
+            if phone is not None:
                 user.phone = phone
-            if email:
+            if email is not None:
                 user.email = email
-            if username:
+            if username is not None:
                 user.username = username
+            if reg_date is not None:
+                user.reg_date = reg_date
         else:
             # Создаём нового пользователя
             user = User(
                 telegram_id=telegram_id,
+                first_join_time=datetime.utcnow(),
                 full_name=full_name,
                 phone=phone,
                 email=email,
                 username=username,
-                first_join_time=datetime.utcnow(),
                 successful_bookings=0,
                 language_code="ru",
-                reg_date=reg_date or datetime.utcnow(),
+                reg_date=reg_date,
             )
             session.add(user)
         session.commit()
