@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Список пользователей</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ФИО</th>
+            <th>Телефон</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.full_name }}</td>
+            <td>{{ user.phone }}</td>
+            <td>
+                <a href="{{ url_for('user_detail', user_id=user.id) }}" class="btn btn-sm btn-info">Просмотреть</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

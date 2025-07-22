@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Данные пользователя</h2>
+{% if edit %}
+<form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}">
+{% else %}
+<div>
+{% endif %}
+    <div class="mb-3">
+        <label class="form-label">ФИО</label>
+        {% if edit %}
+        <input type="text" class="form-control" name="full_name" value="{{ user.full_name }}" required>
+        {% else %}
+        <p>{{ user.full_name }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Телефон</label>
+        {% if edit %}
+        <input type="text" class="form-control" name="phone" value="{{ user.phone }}" required>
+        {% else %}
+        <p>{{ user.phone }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Email</label>
+        {% if edit %}
+        <input type="email" class="form-control" name="email" value="{{ user.email }}" required>
+        {% else %}
+        <p>{{ user.email }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Telegram ID</label>
+        <p>{{ user.telegram_id }}</p>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Дата регистрации</label>
+        <p>{{ user.first_join_time }}</p>
+    </div>
+    {% if edit %}
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="{{ url_for('users') }}" class="btn btn-secondary">Отмена</a>
+    {% else %}
+    <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary">Редактировать</a>
+    <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить пользователя?')">Удалить</button>
+    </form>
+    {% endif %}
+{% if edit %}
+</form>
+{% else %}
+</div>
+{% endif %}
+{% endblock %}

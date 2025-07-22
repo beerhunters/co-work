@@ -1,0 +1,30 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: alpine:latest
+    volumes:
+      - ./data:/data
+    command: /bin/sh -c "mkdir -p /data && touch /data/coworking.db"
