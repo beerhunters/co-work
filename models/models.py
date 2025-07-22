@@ -12,10 +12,12 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from werkzeug.security import generate_password_hash
+import pytz
 import logging
 
 logger = logging.getLogger(__name__)
 Base = declarative_base()
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
 class User(Base):
@@ -25,7 +27,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
-    first_join_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    first_join_time = Column(
+        DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
+    )
     full_name = Column(String)
     phone = Column(String)
     email = Column(String)
@@ -112,7 +116,7 @@ def add_user(
             # Создаём нового пользователя
             user = User(
                 telegram_id=telegram_id,
-                first_join_time=datetime.utcnow(),
+                first_join_time=datetime.now(MOSCOW_TZ),
                 full_name=full_name,
                 phone=phone,
                 email=email,

@@ -56,11 +56,11 @@
     </div>
     <div class="mb-3">
         <label class="form-label">Дата первого входа</label>
-        <p>{{ user.first_join_time or 'Не указано' }}</p>
+        <p>{{ user.first_join_time.strftime('%Y-%m-%d %H:%M:%S %Z') if user.first_join_time else 'Не указано' }}</p>
     </div>
     <div class="mb-3">
         <label class="form-label">Дата регистрации</label>
-        <p>{{ user.reg_date or 'Не указано' }}</p>
+        <p>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</p>
     </div>
     <div class="mb-3">
         {% if edit %}

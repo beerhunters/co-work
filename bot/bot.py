@@ -1,11 +1,14 @@
+import os
 from typing import Optional
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from .handlers import register_handlers
-from .config import BOT_TOKEN
 from models.models import init_db
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,7 +24,7 @@ async def main() -> None:
         init_db()
         logger.info("База данных для бота инициализирована")
 
-        bot = Bot(token=BOT_TOKEN)
+        bot = Bot(token=os.getenv("BOT_TOKEN"))
         dp = Dispatcher(storage=MemoryStorage())
 
         # Регистрация обработчиков

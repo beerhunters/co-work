@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from aiogram import Router, F, Dispatcher
+from aiogram import Router, F, Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -9,10 +9,18 @@ from models.models import User, add_user
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+import pytz
+from dotenv import load_dotenv
+import os
 import logging
+
+load_dotenv()
 
 router = Router()
 logger = logging.getLogger(__name__)
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+print(ADMIN_TELEGRAM_ID, type(ADMIN_TELEGRAM_ID))
 
 
 class Registration(StatesGroup):
@@ -28,10 +36,9 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     """Обработчик команды /start."""
     from models.models import init_db
 
-    init_db()  # Инициализация базы данных
+    init_db()
     logger.info(f"Пользователь {message.from_user.id} начал взаимодействие")
 
-    # Проверка существования пользователя
     engine = create_engine(
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
@@ -41,7 +48,6 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     try:
         user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
         if user:
-            # Проверяем, есть ли недостающие данные
             if not all([user.full_name, user.phone, user.email]):
                 await message.answer(
                     "Вы уже зарегистрированы, но некоторые данные отсутствуют. Введите ваше ФИО:"
@@ -54,7 +60,6 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 )
                 return
         else:
-            # Создаём нового пользователя с telegram_id, first_join_time, username
             add_user(
                 telegram_id=message.from_user.id, username=message.from_user.username
             )
@@ -93,7 +98,7 @@ async def process_phone(message: Message, state: FSMContext) -> None:
 
 
 @router.message(Registration.email)
-async def process_email(message: Message, state: FSMContext) -> None:
+async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
     """Обработка ввода email и завершение регистрации."""
     email = message.text.strip()
     if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
@@ -101,17 +106,46 @@ async def process_email(message: Message, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
+    full_name = data["full_name"]
+    # Разделение ФИО на фамилию, имя и отчество
+    name_parts = full_name.split()
+    last_name = name_parts[0] if len(name_parts) > 0 else "Не указано"
+    first_name = name_parts[1] if len(name_parts) > 1 else "Не указано"
+    middle_name = name_parts[2] if len(name_parts) > 2 else "Не указано"
+
     try:
         add_user(
             telegram_id=message.from_user.id,
-            full_name=data["full_name"],
+            full_name=full_name,
             phone=data["phone"],
             email=email,
             username=message.from_user.username,
-            reg_date=datetime.utcnow(),  # Устанавливаем reg_date при завершении регистрации
+            reg_date=datetime.now(MOSCOW_TZ),
         )
         await message.answer("Регистрация завершена!")
         logger.info(f"Пользователь {message.from_user.id} успешно зарегистрирован")
+
+        # Отправка уведомления администратору
+        if ADMIN_TELEGRAM_ID:
+            try:
+                notification = (
+                    "<b>👤 Новый резидент ✅ ✅</b>\n"
+                    "<b>📋 Данные пользователя:</b>\n\n"
+                    f"Фамилия: <code>{last_name}</code>\n"
+                    f"Имя: <code>{first_name}</code>\n"
+                    f"Отчество: <code>{middle_name}</code>\n"
+                    f"<b>🎟️ TG: </b>@{message.from_user.username or 'Не указано'}\n"
+                    f"<b>☎️ Телефон: </b><code>{data['phone']}</code>\n"
+                    f"<b>📨 Email: </b><code>{email}</code>"
+                )
+                await bot.send_message(
+                    chat_id=ADMIN_TELEGRAM_ID, text=notification, parse_mode="HTML"
+                )
+                logger.info(
+                    f"Уведомление отправлено администратору {ADMIN_TELEGRAM_ID}"
+                )
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления администратору: {str(e)}")
     except Exception as e:
         await message.answer("Ошибка при регистрации. Попробуйте позже.")
         logger.error(f"Ошибка регистрации для {message.from_user.id}: {str(e)}")

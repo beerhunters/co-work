@@ -4,16 +4,19 @@ from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
 from models.models import init_db, User, Admin
 from werkzeug.security import generate_password_hash
+from dotenv import load_dotenv
+import os
 import logging
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+load_dotenv()  # Загружаем переменные из .env
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "your-secret-key"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your-secret-key")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:////data/coworking.db"
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"check_same_thread": False}}
 
@@ -22,7 +25,7 @@ db = SQLAlchemy()
 
 def create_app() -> Flask:
     """Инициализация приложения Flask."""
-    db.init_app(app)  # Инициализация SQLAlchemy с приложением
+    db.init_app(app)
 
     login_manager = LoginManager(app)
     login_manager.login_view = "login"
@@ -33,13 +36,12 @@ def create_app() -> Flask:
         return db.session.get(Admin, int(user_id))
 
     with app.app_context():
-        # Инициализация базы данных
         init_db()
         try:
-            # Создание админа, если не существует
             if not db.session.query(Admin).first():
                 admin = Admin(
-                    login="admin", password=generate_password_hash("admin123")
+                    login=os.getenv("ADMIN_LOGIN"),
+                    password=generate_password_hash(os.getenv("ADMIN_PASSWORD")),
                 )
                 db.session.add(admin)
                 db.session.commit()
@@ -48,7 +50,6 @@ def create_app() -> Flask:
             logger.error(f"Ошибка при создании админа: {str(e)}")
             db.session.rollback()
 
-    # Импортируем и инициализируем маршруты после создания приложения
     from .routes import init_routes
 
     init_routes(app)
