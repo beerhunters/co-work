@@ -1,12 +1,15 @@
 from typing import Optional
-from flask import Flask, request, render_template, redirect, url_for, flash
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 from models.models import User, Admin, Notification
 from web.app import db
 import logging
+from datetime import datetime
+import pytz
 
 logger = logging.getLogger(__name__)
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
 def init_routes(app: Flask) -> None:
@@ -15,6 +18,23 @@ def init_routes(app: Flask) -> None:
     def get_unread_notifications_count() -> int:
         """Получение количества непрочитанных уведомлений."""
         return db.session.query(Notification).filter_by(is_read=0).count()
+
+    def get_recent_notifications(limit: int = 5) -> list:
+        """Получение последних уведомлений."""
+        notifications = (
+            db.session.query(Notification)
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "message": notification.message,
+                "created_at": notification.created_at.strftime("%Y-%m-%d %H:%M"),
+                "is_read": notification.is_read,
+            }
+            for notification in notifications
+        ]
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -46,8 +66,11 @@ def init_routes(app: Flask) -> None:
     def dashboard():
         """Отображение дашборда."""
         unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
         return render_template(
-            "dashboard.html", unread_notifications=unread_notifications
+            "dashboard.html",
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
         )
 
     @app.route("/users")
@@ -56,8 +79,12 @@ def init_routes(app: Flask) -> None:
         """Отображение списка пользователей, отсортированных по дате регистрации."""
         users = db.session.query(User).order_by(User.reg_date.desc()).all()
         unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
         return render_template(
-            "users.html", users=users, unread_notifications=unread_notifications
+            "users.html",
+            users=users,
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
         )
 
     @app.route("/user/<int:user_id>")
@@ -69,11 +96,13 @@ def init_routes(app: Flask) -> None:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
         unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
         return render_template(
             "user_detail.html",
             user=user,
             edit=False,
             unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
         )
 
     @app.route("/user/<int:user_id>/edit", methods=["GET", "POST"])
@@ -100,11 +129,13 @@ def init_routes(app: Flask) -> None:
                 flash("Ошибка при обновлении данных")
                 logger.error(f"Ошибка обновления пользователя {user_id}: {str(e)}")
         unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
         return render_template(
             "user_detail.html",
             user=user,
             edit=True,
             unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
         )
 
     @app.route("/user/<int:user_id>/delete", methods=["POST"])
@@ -136,10 +167,12 @@ def init_routes(app: Flask) -> None:
             .all()
         )
         unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
         return render_template(
             "notifications.html",
             notifications=notifications,
             unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
         )
 
     @app.route("/notifications/mark_all_read", methods=["POST"])
@@ -156,3 +189,20 @@ def init_routes(app: Flask) -> None:
             flash("Ошибка при обновлении уведомлений")
             logger.error(f"Ошибка при пометке уведомлений как прочитанных: {str(e)}")
         return redirect(url_for("notifications"))
+
+    @app.route("/get_notifications", methods=["GET"])
+    @login_required
+    def get_notifications():
+        """Получение данных об уведомлениях для AJAX."""
+        try:
+            unread_count = get_unread_notifications_count()
+            recent_notifications = get_recent_notifications()
+            return jsonify(
+                {
+                    "unread_count": unread_count,
+                    "recent_notifications": recent_notifications,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Ошибка получения уведомлений: {str(e)}")
+            return jsonify({"error": "Ошибка сервера"}), 500

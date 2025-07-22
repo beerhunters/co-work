@@ -24,16 +24,21 @@
             <li class="nav-item dropdown">
                 <a class="nav-link" data-toggle="dropdown" href="#">
                     <i class="far fa-bell"></i>
-                    {% if unread_notifications > 0 %}
-                    <span class="badge badge-warning navbar-badge">{{ unread_notifications }}</span>
-                    {% endif %}
+                    <span id="notification-count" class="badge badge-warning navbar-badge" style="{% if unread_notifications == 0 %}display: none;{% endif %}">{{ unread_notifications }}</span>
                 </a>
                 <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
-                    <span class="dropdown-item dropdown-header">{{ unread_notifications }} новых уведомлений</span>
+                    <span class="dropdown-item dropdown-header" id="notification-header">{{ unread_notifications }} новых уведомлений</span>
                     <div class="dropdown-divider"></div>
-                    <a href="{{ url_for('notifications') }}" class="dropdown-item">
-                        <i class="fas fa-users mr-2"></i> Просмотреть уведомления
-                    </a>
+                    <div id="notification-list">
+                        {% for notification in recent_notifications %}
+                        <a href="{{ url_for('users') }}" class="dropdown-item">
+                            <i class="fas fa-user-plus mr-2"></i> {{ notification.message }}
+                            <span class="float-right text-muted text-sm">{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        {% endfor %}
+                        <a href="{{ url_for('notifications') }}" class="dropdown-item dropdown-footer">Все уведомления</a>
+                    </div>
                 </div>
             </li>
             {% if current_user.is_authenticated %}
@@ -109,5 +114,49 @@
 <script src="{{ url_for('static', filename='adminlte/plugins/jquery/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='adminlte/plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='adminlte/dist/js/adminlte.min.js') }}"></script>
+<script>
+    // Функция для обновления уведомлений через AJAX
+    function updateNotifications() {
+        $.ajax({
+            url: '{{ url_for("get_notifications") }}',
+            method: 'GET',
+            success: function(data) {
+                // Обновление индикатора
+                const countElement = $('#notification-count');
+                const headerElement = $('#notification-header');
+                if (data.unread_count > 0) {
+                    countElement.text(data.unread_count).show();
+                    headerElement.text(data.unread_count + ' новых уведомлений');
+                } else {
+                    countElement.hide();
+                    headerElement.text('Нет новых уведомлений');
+                }
+                // Обновление списка уведомлений
+                const listElement = $('#notification-list');
+                listElement.empty();
+                data.recent_notifications.forEach(function(notification) {
+                    listElement.append(
+                        '<a href="{{ url_for("users") }}" class="dropdown-item">' +
+                        '<i class="fas fa-user-plus mr-2"></i> ' + notification.message +
+                        '<span class="float-right text-muted text-sm">' + notification.created_at + '</span>' +
+                        '</a><div class="dropdown-divider"></div>'
+                    );
+                });
+                listElement.append(
+                    '<a href="{{ url_for("notifications") }}" class="dropdown-item dropdown-footer">Все уведомления</a>'
+                );
+            },
+            error: function(xhr, status, error) {
+                console.error('Ошибка получения уведомлений:', error);
+            }
+        });
+    }
+
+    // Запускаем обновление уведомлений каждые 10 секунд
+    $(document).ready(function() {
+        updateNotifications(); // Первоначальное обновление
+        setInterval(updateNotifications, 10000); // Обновление каждые 10 секунд
+    });
+</script>
 </body>
 </html>
