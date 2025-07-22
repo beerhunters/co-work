@@ -7,24 +7,23 @@ services:
       - BOT_TOKEN=${BOT_TOKEN}
     volumes:
       - ./data:/data
-    depends_on:
-      - db
     restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
     ports:
-      - "5050:5050"
+      - "5001:5001"
     volumes:
       - ./data:/data
-    depends_on:
-      - db
     restart: unless-stopped
-
-  db:
-    image: alpine:latest
-    volumes:
-      - ./data:/data
-    command: /bin/sh -c "mkdir -p /data && touch /data/coworking.db"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

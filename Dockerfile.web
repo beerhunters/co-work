@@ -3,15 +3,12 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install gunicorn
 
 COPY web/ ./web
-
 COPY models/ ./models
-
 COPY web/templates/ ./web/templates
-
 COPY web/static/ ./web/static
 
-CMD ["python", "-m", "web.app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "web.app:create_app()"]

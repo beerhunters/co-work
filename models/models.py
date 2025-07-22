@@ -1,5 +1,13 @@
 from typing import Optional
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    BigInteger,
+    String,
+    DateTime,
+    text,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -38,9 +46,13 @@ def init_db() -> None:
     engine = create_engine(
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
-    engine.execute("PRAGMA journal_mode=WAL")
+    # Настройка WAL-режима через соединение
+    with engine.connect() as connection:
+        connection.execute(text("PRAGMA journal_mode=WAL"))
+        logger.info("WAL-режим успешно включён")
+    # Создание таблиц
     Base.metadata.create_all(engine)
-    logger.info("База данных инициализирована")
+    logger.info("Таблицы базы данных созданы")
 
 
 def add_user(telegram_id: int, full_name: str, phone: str, email: str) -> None:
@@ -57,6 +69,7 @@ def add_user(telegram_id: int, full_name: str, phone: str, email: str) -> None:
         )
         session.add(user)
         session.commit()
+        logger.info(f"Пользователь {telegram_id} добавлен в БД")
     except Exception as e:
         session.rollback()
         logger.error(f"Ошибка добавления пользователя {telegram_id}: {str(e)}")
