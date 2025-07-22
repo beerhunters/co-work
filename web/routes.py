@@ -1,85 +1,88 @@
-from typing import Optional, List
-from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_login import login_required, login_user, logout_user, current_user
-from models.models import User, Admin
-from web.app import db
+from typing import Optional
+from flask import Flask, request, render_template, redirect, url_for, flash
+from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
+from models.models import User, Admin
+from web.app import db  # Импортируем db из app.py
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def init_routes(app: Flask) -> None:
-    """Инициализация маршрутов Flask."""
+    """Инициализация маршрутов приложения."""
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        """Обработчик страницы логина."""
+        """Обработка входа в систему."""
         if current_user.is_authenticated:
-            return redirect(url_for("users"))
-
+            return redirect(url_for("dashboard"))
         if request.method == "POST":
             login = request.form.get("login")
             password = request.form.get("password")
             user = db.session.query(Admin).filter_by(login=login).first()
-
             if user and check_password_hash(user.password, password):
                 login_user(user)
-                logger.info(f"Админ {login} вошел в систему")
-                return redirect(url_for("users"))
+                logger.info(f"Админ {login} вошёл в систему")
+                return redirect(url_for("dashboard"))
             flash("Неверный логин или пароль")
-
+            logger.warning(f"Неудачная попытка входа для логина {login}")
         return render_template("login.html")
 
     @app.route("/logout")
     @login_required
     def logout():
-        """Обработчик выхода из системы."""
-        logger.info(f"Админ {current_user.login} вышел из системы")
+        """Обработка выхода из системы."""
         logout_user()
+        logger.info("Админ вышел из системы")
         return redirect(url_for("login"))
 
     @app.route("/")
     @login_required
+    def dashboard():
+        """Отображение дашборда."""
+        return render_template("dashboard.html")
+
+    @app.route("/users")
+    @login_required
     def users():
-        """Список всех пользователей."""
+        """Отображение списка пользователей."""
         users = db.session.query(User).all()
         return render_template("users.html", users=users)
 
     @app.route("/user/<int:user_id>")
     @login_required
     def user_detail(user_id: int):
-        """Детальная информация о пользователе."""
+        """Отображение детальной информации о пользователе."""
         user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
-        return render_template("user_detail.html", user=user)
+        return render_template("user_detail.html", user=user, edit=False)
 
     @app.route("/user/<int:user_id>/edit", methods=["GET", "POST"])
     @login_required
     def edit_user(user_id: int):
-        """Редактирование данных пользователя."""
+        """Редактирование пользователя."""
         user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
-
         if request.method == "POST":
+            user.full_name = request.form.get("full_name")
+            user.phone = request.form.get("phone")
+            user.email = request.form.get("email")
+            user.username = request.form.get("username")
+            user.language_code = request.form.get("language_code", "ru")
             try:
-                user.full_name = request.form.get("full_name")
-                user.phone = request.form.get("phone")
-                user.email = request.form.get("email")
-                user.username = request.form.get("username")
-                user.language_code = request.form.get("language_code")
                 db.session.commit()
                 flash("Данные пользователя обновлены")
-                logger.info(f"Данные пользователя {user_id} обновлены")
-                return redirect(url_for("users"))
+                logger.info(f"Пользователь {user_id} обновлён")
+                return redirect(url_for("user_detail", user_id=user_id))
             except Exception as e:
+                db.session.rollback()
                 flash("Ошибка при обновлении данных")
-                logger.error(f"Ошибка при обновлении пользователя {user_id}: {str(e)}")
-
+                logger.error(f"Ошибка обновления пользователя {user_id}: {str(e)}")
         return render_template("user_detail.html", user=user, edit=True)
 
     @app.route("/user/<int:user_id>/delete", methods=["POST"])
@@ -90,13 +93,13 @@ def init_routes(app: Flask) -> None:
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
-
         try:
             db.session.delete(user)
             db.session.commit()
-            flash("Пользователь удален")
-            logger.info(f"Пользователь {user_id} удален")
+            flash("Пользователь удалён")
+            logger.info(f"Пользователь {user_id} удалён")
         except Exception as e:
+            db.session.rollback()
             flash("Ошибка при удалении пользователя")
-            logger.error(f"Ошибка при удалении пользователя {user_id}: {str(e)}")
+            logger.error(f"Ошибка удаления пользователя {user_id}: {str(e)}")
         return redirect(url_for("users"))

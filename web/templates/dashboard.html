@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Дашборд{% endblock %}
+{% block content_title %}Дашборд{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Добро пожаловать в админ-панель</h3>
+                </div>
+                <div class="card-body">
+                    <p>Выберите раздел в боковом меню для управления:</p>
+                    <ul>
+                        <li><a href="{{ url_for('users') }}">Пользователи</a> - управление списком пользователей</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
