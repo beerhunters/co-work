@@ -1,17 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Пользователи{% endblock %}
-{% block content_title %}Список пользователей{% endblock %}
+{% block content_title %}Пользователи{% endblock %}
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title">Пользователи</h3>
+        <h3 class="card-title">Список пользователей</h3>
     </div>
     <div class="card-body">
-        <table class="table table-bordered table-striped">
+        <table class="table table-bordered table-hover">
             <thead>
                 <tr>
+                    <th>ID</th>
+                    <th>Telegram ID</th>
                     <th>ФИО</th>
                     <th>Телефон</th>
+                    <th>Email</th>
                     <th>Дата регистрации</th>
                     <th>Действия</th>
                 </tr>
@@ -19,14 +22,23 @@
             <tbody>
                 {% for user in users %}
                 <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.telegram_id }}</td>
                     <td>{{ user.full_name or 'Не указано' }}</td>
                     <td>{{ user.phone or 'Не указано' }}</td>
-                    <td>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</td>
+                    <td>{{ user.email or 'Не указано' }}</td>
+                    <td>{{ user.reg_date.strftime('%Y-%m-%d %H:%M') if user.reg_date else 'Не указано' }}</td>
                     <td>
-                        <a href="{{ url_for('user_detail', user_id=user.id) }}" class="btn btn-sm btn-info">
-                            <i class="fas fa-eye"></i> Просмотреть
-                        </a>
+                        <a href="{{ url_for('user_detail', user_id=user.id) }}" class="btn btn-sm btn-info">Подробно</a>
+                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning">Редактировать</a>
+                        <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Вы уверены, что хотите удалить пользователя?');">Удалить</button>
+                        </form>
                     </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">Нет зарегистрированных пользователей</td>
                 </tr>
                 {% endfor %}
             </tbody>

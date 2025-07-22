@@ -17,18 +17,25 @@ def init_routes(app: Flask) -> None:
 
     def get_unread_notifications_count() -> int:
         """Получение количества непрочитанных уведомлений."""
-        return db.session.query(Notification).filter_by(is_read=0).count()
+        count = db.session.query(Notification).filter_by(is_read=0).count()
+        logger.info(f"Количество непрочитанных уведомлений: {count}")
+        return count
 
     def get_recent_notifications(limit: int = 5) -> list:
-        """Получение последних уведомлений."""
+        """Получение последних непрочитанных уведомлений."""
         notifications = (
             db.session.query(Notification)
+            .filter_by(is_read=0)
             .order_by(Notification.created_at.desc())
             .limit(limit)
             .all()
         )
+        logger.info(
+            f"Получено {len(notifications)} последних непрочитанных уведомлений"
+        )
         return [
             {
+                "id": notification.id,
                 "message": notification.message,
                 "created_at": notification.created_at.strftime("%Y-%m-%d %H:%M"),
                 "is_read": notification.is_read,
@@ -180,15 +187,50 @@ def init_routes(app: Flask) -> None:
     def mark_all_notifications_read():
         """Пометить все уведомления как прочитанные."""
         try:
-            db.session.query(Notification).filter_by(is_read=0).update({"is_read": 1})
+            updated = (
+                db.session.query(Notification)
+                .filter_by(is_read=0)
+                .update({"is_read": 1})
+            )
             db.session.commit()
-            flash("Все уведомления помечены как прочитанные")
-            logger.info("Все уведомления помечены как прочитанные")
+            flash(f"Помечено как прочитано: {updated} уведомлений")
+            logger.info(f"Помечено как прочитано: {updated} уведомлений")
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": "Все уведомления помечены как прочитанные",
+                }
+            )
         except Exception as e:
             db.session.rollback()
             flash("Ошибка при обновлении уведомлений")
             logger.error(f"Ошибка при пометке уведомлений как прочитанных: {str(e)}")
-        return redirect(url_for("notifications"))
+            return jsonify({"status": "error", "message": "Ошибка сервера"}), 500
+
+    @app.route("/notifications/mark_read/<int:notification_id>", methods=["POST"])
+    @login_required
+    def mark_notification_read(notification_id: int):
+        """Пометить одно уведомление как прочитанное."""
+        try:
+            notification = db.session.get(Notification, notification_id)
+            if not notification:
+                logger.warning(f"Уведомление {notification_id} не найдено")
+                return (
+                    jsonify({"status": "error", "message": "Уведомление не найдено"}),
+                    404,
+                )
+            notification.is_read = 1
+            db.session.commit()
+            logger.info(f"Уведомление {notification_id} помечено как прочитанное")
+            return jsonify(
+                {"status": "success", "message": "Уведомление помечено как прочитанное"}
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.error(
+                f"Ошибка при пометке уведомления {notification_id} как прочитанного: {str(e)}"
+            )
+            return jsonify({"status": "error", "message": "Ошибка сервера"}), 500
 
     @app.route("/get_notifications", methods=["GET"])
     @login_required
@@ -205,4 +247,44 @@ def init_routes(app: Flask) -> None:
             )
         except Exception as e:
             logger.error(f"Ошибка получения уведомлений: {str(e)}")
+            return jsonify({"error": "Ошибка сервера"}), 500
+
+    @app.route("/debug_db")
+    @login_required
+    def debug_db():
+        """Отладочный маршрут для проверки таблиц users и notifications."""
+        try:
+            users = db.session.query(User).all()
+            notifications = db.session.query(Notification).all()
+            users_data = [
+                {
+                    "id": user.id,
+                    "telegram_id": user.telegram_id,
+                    "full_name": user.full_name,
+                    "phone": user.phone,
+                    "email": user.email,
+                    "username": user.username,
+                    "reg_date": (
+                        user.reg_date.strftime("%Y-%m-%d %H:%M:%S %Z")
+                        if user.reg_date
+                        else None
+                    ),
+                }
+                for user in users
+            ]
+            notifications_data = [
+                {
+                    "id": notification.id,
+                    "user_id": notification.user_id,
+                    "message": notification.message,
+                    "created_at": notification.created_at.strftime(
+                        "%Y-%m-%d %H:%M:%S %Z"
+                    ),
+                    "is_read": notification.is_read,
+                }
+                for notification in notifications
+            ]
+            return jsonify({"users": users_data, "notifications": notifications_data})
+        except Exception as e:
+            logger.error(f"Ошибка отладки БД: {str(e)}")
             return jsonify({"error": "Ошибка сервера"}), 500

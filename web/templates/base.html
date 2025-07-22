@@ -31,9 +31,9 @@
                     <div class="dropdown-divider"></div>
                     <div id="notification-list">
                         {% for notification in recent_notifications %}
-                        <a href="{{ url_for('users') }}" class="dropdown-item">
-                            <i class="fas fa-user-plus mr-2"></i> {{ notification.message }}
-                            <span class="float-right text-muted text-sm">{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        <a href="{{ url_for('users') }}" class="dropdown-item notification-item" data-notification-id="{{ notification.id }}">
+                            <i class="fas fa-user-plus mr-2"></i> Новый пользователь
+                            <span class="float-right text-muted text-sm">{{ notification.created_at }}</span>
                         </a>
                         <div class="dropdown-divider"></div>
                         {% endfor %}
@@ -136,8 +136,8 @@
                 listElement.empty();
                 data.recent_notifications.forEach(function(notification) {
                     listElement.append(
-                        '<a href="{{ url_for("users") }}" class="dropdown-item">' +
-                        '<i class="fas fa-user-plus mr-2"></i> ' + notification.message +
+                        '<a href="{{ url_for("users") }}" class="dropdown-item notification-item" data-notification-id="' + notification.id + '">' +
+                        '<i class="fas fa-user-plus mr-2"></i> Новый пользователь' +
                         '<span class="float-right text-muted text-sm">' + notification.created_at + '</span>' +
                         '</a><div class="dropdown-divider"></div>'
                     );
@@ -152,10 +152,52 @@
         });
     }
 
-    // Запускаем обновление уведомлений каждые 10 секунд
+    // Обработка нажатия на уведомление
     $(document).ready(function() {
         updateNotifications(); // Первоначальное обновление
         setInterval(updateNotifications, 10000); // Обновление каждые 10 секунд
+
+        // Перехват отправки формы для AJAX
+        $('form[action="{{ url_for("mark_all_notifications_read") }}"]').on('submit', function(e) {
+            e.preventDefault();
+            $.ajax({
+                url: '{{ url_for("mark_all_notifications_read") }}',
+                method: 'POST',
+                success: function(data) {
+                    if (data.status === 'success') {
+                        updateNotifications(); // Обновляем уведомления после успешного запроса
+                        window.location.reload(); // Перезагружаем страницу для обновления таблицы
+                    } else {
+                        console.error('Ошибка:', data.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Ошибка при пометке уведомлений:', error);
+                }
+            });
+        });
+
+        // Обработка клика на уведомление
+        $(document).on('click', '.notification-item', function(e) {
+            e.preventDefault(); // Предотвращаем переход по ссылке сразу
+            const notificationId = $(this).data('notification-id');
+            const href = $(this).attr('href');
+            $.ajax({
+                url: '/notifications/mark_read/' + notificationId,
+                method: 'POST',
+                success: function(data) {
+                    if (data.status === 'success') {
+                        updateNotifications(); // Обновляем список уведомлений
+                        window.location.href = href; // Переходим на страницу пользователей
+                    } else {
+                        console.error('Ошибка:', data.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Ошибка при пометке уведомления:', error);
+                }
+            });
+        });
     });
 </script>
 </body>

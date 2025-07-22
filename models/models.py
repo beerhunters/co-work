@@ -105,7 +105,7 @@ def add_user(
     username: Optional[str] = None,
     reg_date: Optional[datetime] = None,
 ) -> None:
-    """Добавление или обновление пользователя в БД."""
+    """Добавление или обновление пользователя в БД и создание уведомления."""
     engine = create_engine(
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
@@ -115,7 +115,7 @@ def add_user(
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
-            # Обновляем существующие поля, если они переданы
+            logger.info(f"Обновление пользователя {telegram_id}")
             if full_name is not None:
                 user.full_name = full_name
             if phone is not None:
@@ -127,7 +127,7 @@ def add_user(
             if reg_date is not None:
                 user.reg_date = reg_date
         else:
-            # Создаём нового пользователя
+            logger.info(f"Создание нового пользователя {telegram_id}")
             user = User(
                 telegram_id=telegram_id,
                 first_join_time=datetime.now(MOSCOW_TZ),
@@ -137,23 +137,28 @@ def add_user(
                 username=username,
                 successful_bookings=0,
                 language_code="ru",
-                reg_date=reg_date,
+                reg_date=reg_date or datetime.now(MOSCOW_TZ),
             )
             session.add(user)
             session.flush()  # Получаем user.id до коммита
-            # Создаём уведомление для нового пользователя
-            if full_name and phone and email:
-                notification = Notification(
-                    user_id=user.id,
-                    message=f"Новый пользователь: {full_name}",
-                    created_at=datetime.now(MOSCOW_TZ),
-                    is_read=0,
-                )
-                session.add(notification)
+        # Создаём уведомление при полной регистрации
+        if full_name and phone and email:
+            notification = Notification(
+                user_id=user.id,
+                message=f"Новый пользователь: {full_name}",
+                created_at=datetime.now(MOSCOW_TZ),
+                is_read=0,
+            )
+            session.add(notification)
+            logger.info(
+                f"Уведомление создано для пользователя {user.id}: {notification.message}"
+            )
+        else:
+            logger.warning(
+                f"Уведомление не создано для {telegram_id}: неполные данные (full_name={full_name}, phone={phone}, email={email})"
+            )
         session.commit()
         logger.info(f"Пользователь {telegram_id} добавлен или обновлён в БД")
-        if full_name and phone and email:
-            logger.info(f"Уведомление о новом пользователе {user.id} создано")
     except Exception as e:
         session.rollback()
         logger.error(
