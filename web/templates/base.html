@@ -20,6 +20,22 @@
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
+            <!-- Notifications Dropdown -->
+            <li class="nav-item dropdown">
+                <a class="nav-link" data-toggle="dropdown" href="#">
+                    <i class="far fa-bell"></i>
+                    {% if unread_notifications > 0 %}
+                    <span class="badge badge-warning navbar-badge">{{ unread_notifications }}</span>
+                    {% endif %}
+                </a>
+                <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
+                    <span class="dropdown-item dropdown-header">{{ unread_notifications }} новых уведомлений</span>
+                    <div class="dropdown-divider"></div>
+                    <a href="{{ url_for('notifications') }}" class="dropdown-item">
+                        <i class="fas fa-users mr-2"></i> Просмотреть уведомления
+                    </a>
+                </div>
+            </li>
             {% if current_user.is_authenticated %}
             <li class="nav-item">
                 <a class="nav-link" href="{{ url_for('logout') }}">Выйти</a>
@@ -47,6 +63,12 @@
                             <p>Пользователи</p>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="{{ url_for('notifications') }}" class="nav-link {% if request.endpoint == 'notifications' %}active{% endif %}">
+                            <i class="nav-icon far fa-bell"></i>
+                            <p>Уведомления</p>
+                        </a>
+                    </li>
                 </ul>
             </nav>
         </div>
@@ -67,7 +89,7 @@
                 {% with messages = get_flashed_messages() %}
                 {% if messages %}
                 <div class="alert alert-info alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
                     {% for message in messages %}
                     {{ message }}<br>
                     {% endfor %}
@@ -80,7 +102,7 @@
     </div>
     <!-- Footer -->
     <footer class="main-footer">
-        <strong>Управление коворкингом &copy; 2025</strong>
+        <strong>Управление коворкингом © 2025</strong>
     </footer>
 </div>
 <!-- Scripts -->

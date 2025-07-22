@@ -68,6 +68,20 @@ class Admin(Base):
         return str(self.id)
 
 
+class Notification(Base):
+    """Модель уведомления."""
+
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
+    message = Column(String, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
+    )
+    is_read = Column(Integer, default=0, nullable=False)
+
+
 def init_db() -> None:
     """Инициализация базы данных с WAL-режимом."""
     engine = create_engine(
@@ -126,8 +140,20 @@ def add_user(
                 reg_date=reg_date,
             )
             session.add(user)
+            session.flush()  # Получаем user.id до коммита
+            # Создаём уведомление для нового пользователя
+            if full_name and phone and email:
+                notification = Notification(
+                    user_id=user.id,
+                    message=f"Новый пользователь: {full_name}",
+                    created_at=datetime.now(MOSCOW_TZ),
+                    is_read=0,
+                )
+                session.add(notification)
         session.commit()
         logger.info(f"Пользователь {telegram_id} добавлен или обновлён в БД")
+        if full_name and phone and email:
+            logger.info(f"Уведомление о новом пользователе {user.id} создано")
     except Exception as e:
         session.rollback()
         logger.error(

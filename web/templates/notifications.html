@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Уведомления{% endblock %}
+{% block content_title %}Уведомления{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Список уведомлений</h3>
+        <div class="card-tools">
+            <a href="{{ url_for('mark_all_notifications_read') }}" class="btn btn-sm btn-primary">
+                <i class="fas fa-check"></i> Пометить все как прочитанные
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if notifications %}
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Сообщение</th>
+                    <th>Дата</th>
+                    <th>Статус</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for notification in notifications %}
+                <tr>
+                    <td>{{ notification.message }}</td>
+                    <td>{{ notification.created_at.strftime('%Y-%m-%d %H:%M:%S %Z') }}</td>
+                    <td>{{ 'Прочитано' if notification.is_read else 'Непрочитано' }}</td>
+                    <td>
+                        <a href="{{ url_for('users') }}" class="btn btn-sm btn-info">
+                            <i class="fas fa-users"></i> К списку пользователей
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Нет уведомлений</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

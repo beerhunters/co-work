@@ -12,6 +12,7 @@
                 <tr>
                     <th>ФИО</th>
                     <th>Телефон</th>
+                    <th>Дата регистрации</th>
                     <th>Действия</th>
                 </tr>
             </thead>
@@ -20,6 +21,7 @@
                 <tr>
                     <td>{{ user.full_name or 'Не указано' }}</td>
                     <td>{{ user.phone or 'Не указано' }}</td>
+                    <td>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</td>
                     <td>
                         <a href="{{ url_for('user_detail', user_id=user.id) }}" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Просмотреть

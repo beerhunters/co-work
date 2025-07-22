@@ -2,8 +2,8 @@ from typing import Optional
 from flask import Flask, request, render_template, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
-from models.models import User, Admin
-from web.app import db  # Импортируем db из app.py
+from models.models import User, Admin, Notification
+from web.app import db
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 
 def init_routes(app: Flask) -> None:
     """Инициализация маршрутов приложения."""
+
+    def get_unread_notifications_count() -> int:
+        """Получение количества непрочитанных уведомлений."""
+        return db.session.query(Notification).filter_by(is_read=0).count()
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -41,14 +45,20 @@ def init_routes(app: Flask) -> None:
     @login_required
     def dashboard():
         """Отображение дашборда."""
-        return render_template("dashboard.html")
+        unread_notifications = get_unread_notifications_count()
+        return render_template(
+            "dashboard.html", unread_notifications=unread_notifications
+        )
 
     @app.route("/users")
     @login_required
     def users():
-        """Отображение списка пользователей."""
-        users = db.session.query(User).all()
-        return render_template("users.html", users=users)
+        """Отображение списка пользователей, отсортированных по дате регистрации."""
+        users = db.session.query(User).order_by(User.reg_date.desc()).all()
+        unread_notifications = get_unread_notifications_count()
+        return render_template(
+            "users.html", users=users, unread_notifications=unread_notifications
+        )
 
     @app.route("/user/<int:user_id>")
     @login_required
@@ -58,7 +68,13 @@ def init_routes(app: Flask) -> None:
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
-        return render_template("user_detail.html", user=user, edit=False)
+        unread_notifications = get_unread_notifications_count()
+        return render_template(
+            "user_detail.html",
+            user=user,
+            edit=False,
+            unread_notifications=unread_notifications,
+        )
 
     @app.route("/user/<int:user_id>/edit", methods=["GET", "POST"])
     @login_required
@@ -83,7 +99,13 @@ def init_routes(app: Flask) -> None:
                 db.session.rollback()
                 flash("Ошибка при обновлении данных")
                 logger.error(f"Ошибка обновления пользователя {user_id}: {str(e)}")
-        return render_template("user_detail.html", user=user, edit=True)
+        unread_notifications = get_unread_notifications_count()
+        return render_template(
+            "user_detail.html",
+            user=user,
+            edit=True,
+            unread_notifications=unread_notifications,
+        )
 
     @app.route("/user/<int:user_id>/delete", methods=["POST"])
     @login_required
@@ -103,3 +125,34 @@ def init_routes(app: Flask) -> None:
             flash("Ошибка при удалении пользователя")
             logger.error(f"Ошибка удаления пользователя {user_id}: {str(e)}")
         return redirect(url_for("users"))
+
+    @app.route("/notifications")
+    @login_required
+    def notifications():
+        """Отображение списка уведомлений."""
+        notifications = (
+            db.session.query(Notification)
+            .order_by(Notification.created_at.desc())
+            .all()
+        )
+        unread_notifications = get_unread_notifications_count()
+        return render_template(
+            "notifications.html",
+            notifications=notifications,
+            unread_notifications=unread_notifications,
+        )
+
+    @app.route("/notifications/mark_all_read", methods=["POST"])
+    @login_required
+    def mark_all_notifications_read():
+        """Пометить все уведомления как прочитанные."""
+        try:
+            db.session.query(Notification).filter_by(is_read=0).update({"is_read": 1})
+            db.session.commit()
+            flash("Все уведомления помечены как прочитанные")
+            logger.info("Все уведомления помечены как прочитанные")
+        except Exception as e:
+            db.session.rollback()
+            flash("Ошибка при обновлении уведомлений")
+            logger.error(f"Ошибка при пометке уведомлений как прочитанных: {str(e)}")
+        return redirect(url_for("notifications"))
