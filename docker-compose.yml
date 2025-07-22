@@ -8,9 +8,6 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
-    depends_on:
-      web:
-        condition: service_healthy
 
   web:
     build:

@@ -40,6 +40,26 @@ class Admin(Base):
     login = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
 
+    # Методы для Flask-Login
+    @property
+    def is_active(self) -> bool:
+        """Активен ли пользователь."""
+        return True
+
+    @property
+    def is_authenticated(self) -> bool:
+        """Аутентифицирован ли пользователь."""
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        """Является ли пользователь анонимным."""
+        return False
+
+    def get_id(self) -> str:
+        """Получение идентификатора пользователя."""
+        return str(self.id)
+
 
 def init_db() -> None:
     """Инициализация базы данных с WAL-режимом."""

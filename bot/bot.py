@@ -16,18 +16,21 @@ logger = logging.getLogger(__name__)
 
 async def main() -> None:
     """Инициализация и запуск Telegram-бота."""
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher(storage=MemoryStorage())
-
-    # Инициализация базы данных
-    init_db()
-
-    # Регистрация обработчиков
-    register_handlers(dp)
-
-    logger.info("Бот запущен")
     try:
+        # Инициализация базы данных
+        init_db()
+        logger.info("База данных для бота инициализирована")
+
+        bot = Bot(token=BOT_TOKEN)
+        dp = Dispatcher(storage=MemoryStorage())
+
+        # Регистрация обработчиков
+        register_handlers(dp)
+
+        logger.info("Бот запущен")
         await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {str(e)}")
     finally:
         await bot.session.close()
 

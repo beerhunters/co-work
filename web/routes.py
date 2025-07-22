@@ -2,6 +2,7 @@ from typing import Optional, List
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import login_required, login_user, logout_user, current_user
 from models.models import User, Admin
+from web.app import db  # Импортируем db из app.py
 from werkzeug.security import check_password_hash
 import logging
 
@@ -20,12 +21,7 @@ def init_routes(app: Flask) -> None:
         if request.method == "POST":
             login = request.form.get("login")
             password = request.form.get("password")
-            user = (
-                app.extensions["sqlalchemy"]
-                .db.session.query(Admin)
-                .filter_by(login=login)
-                .first()
-            )
+            user = db.session.query(Admin).filter_by(login=login).first()
 
             if user and check_password_hash(user.password, password):
                 login_user(user)
@@ -47,14 +43,14 @@ def init_routes(app: Flask) -> None:
     @login_required
     def users():
         """Список всех пользователей."""
-        users = app.extensions["sqlalchemy"].db.session.query(User).all()
+        users = db.session.query(User).all()
         return render_template("users.html", users=users)
 
     @app.route("/user/<int:user_id>")
     @login_required
     def user_detail(user_id: int):
         """Детальная информация о пользователе."""
-        user = app.extensions["sqlalchemy"].db.session.get(User, user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
@@ -64,7 +60,7 @@ def init_routes(app: Flask) -> None:
     @login_required
     def edit_user(user_id: int):
         """Редактирование данных пользователя."""
-        user = app.extensions["sqlalchemy"].db.session.get(User, user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
@@ -74,7 +70,7 @@ def init_routes(app: Flask) -> None:
                 user.full_name = request.form.get("full_name")
                 user.phone = request.form.get("phone")
                 user.email = request.form.get("email")
-                app.extensions["sqlalchemy"].db.session.commit()
+                db.session.commit()
                 flash("Данные пользователя обновлены")
                 logger.info(f"Данные пользователя {user_id} обновлены")
                 return redirect(url_for("users"))
@@ -88,14 +84,14 @@ def init_routes(app: Flask) -> None:
     @login_required
     def delete_user(user_id: int):
         """Удаление пользователя."""
-        user = app.extensions["sqlalchemy"].db.session.get(User, user_id)
+        user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
 
         try:
-            app.extensions["sqlalchemy"].db.session.delete(user)
-            app.extensions["sqlalchemy"].db.session.commit()
+            db.session.delete(user)
+            db.session.commit()
             flash("Пользователь удален")
             logger.info(f"Пользователь {user_id} удален")
         except Exception as e:
