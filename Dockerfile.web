@@ -2,6 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Создаем пользователя для приложения
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Создаем папку data и даем права на запись
+RUN mkdir -p /data && chown -R appuser:appuser /data
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install gunicorn
@@ -10,5 +16,11 @@ COPY web/ ./web
 COPY models/ ./models
 COPY web/templates/ ./web/templates
 COPY web/static/ ./web/static
+
+# Меняем владельца файлов
+RUN chown -R appuser:appuser /app
+
+# Переключаемся на пользователя приложения
+USER appuser
 
 CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "web.app:app"]

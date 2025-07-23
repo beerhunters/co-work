@@ -45,20 +45,40 @@ def init_routes(app: Flask) -> None:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        """Обработка страницы входа."""
+        if current_user.is_authenticated:
+            return redirect(url_for("dashboard"))
+
         if request.method == "POST":
-            login = request.form.get("login")
-            password = request.form.get("password")
-            if not login or not password:
-                logger.warning("Пустой логин или пароль при попытке входа")
-                return render_template("login.html", error="Введите логин и пароль")
-            user = db.session.query(Admin).filter_by(login=login).first()
-            if user and check_password_hash(user.password, password):
-                login_user(user)
-                logger.info(f"Успешный вход для пользователя '{login}'")
-                return redirect(url_for("dashboard"))
-            logger.warning(f"Неудачная попытка входа для логина '{login}'")
-            return render_template("login.html", error="Неверный логин или пароль")
+            login_name = request.form.get("login", "").strip()
+            password = request.form.get("password", "")
+
+            if not login_name or not password:
+                flash("Пожалуйста, заполните все поля", "error")
+                return render_template("login.html")
+
+            try:
+                user = db.session.query(Admin).filter_by(login=login_name).first()
+
+                if user and check_password_hash(user.password, password):
+                    login_user(user, remember=True)
+                    flash("Вход выполнен успешно!", "success")
+
+                    # Перенаправляем на страницу, которую пытался посетить пользователь
+                    next_page = request.args.get("next")
+                    if next_page:
+                        return redirect(next_page)
+                    return redirect(url_for("dashboard"))
+                else:
+                    flash("Неверный логин или пароль", "error")
+                    logger.warning(
+                        f"Неудачная попытка входа для пользователя: {login_name}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Ошибка при входе в систему: {e}")
+                flash("Произошла ошибка при входе в систему", "error")
+                db.session.rollback()
+
         return render_template("login.html")
 
     @app.route("/logout")
