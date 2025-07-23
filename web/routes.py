@@ -49,6 +49,9 @@ def init_routes(app: Flask) -> None:
         if request.method == "POST":
             login = request.form.get("login")
             password = request.form.get("password")
+            if not login or not password:
+                logger.warning("Пустой логин или пароль при попытке входа")
+                return render_template("login.html", error="Введите логин и пароль")
             user = db.session.query(Admin).filter_by(login=login).first()
             if user and check_password_hash(user.password, password):
                 login_user(user)
