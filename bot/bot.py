@@ -5,7 +5,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from .handlers import register_handlers
-from models.models import init_db
+from models.models import init_db, create_admin
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,6 +23,21 @@ async def main() -> None:
         # Инициализация базы данных
         init_db()
         logger.info("База данных для бота инициализирована")
+
+        # Создание администратора
+        admin_login = os.getenv("ADMIN_LOGIN", "admin")
+        admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+        if not admin_login or not admin_password:
+            logger.error("ADMIN_LOGIN или ADMIN_PASSWORD не заданы в .env")
+            raise ValueError("ADMIN_LOGIN и ADMIN_PASSWORD должны быть заданы в .env")
+
+        create_admin(admin_login, admin_password)
+        logger.info(f"Проверена/создана запись администратора с логином: {admin_login}")
+
+        # Создаем файл-маркер для healthcheck
+        with open("/data/bot_initialized", "w") as f:
+            f.write("initialized")
+        logger.info("Файл-маркер инициализации создан: /data/bot_initialized")
 
         bot = Bot(token=os.getenv("BOT_TOKEN"))
         dp = Dispatcher(storage=MemoryStorage())

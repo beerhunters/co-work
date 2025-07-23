@@ -2,10 +2,9 @@ from typing import Optional
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 import os
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 import time
 
@@ -22,6 +21,7 @@ def create_app() -> Flask:
         Flask: Настроенное приложение Flask.
     """
     load_dotenv()  # Загружаем переменные из .env
+    logging.basicConfig(level=logging.INFO)
 
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:////data/coworking.db"
@@ -36,50 +36,32 @@ def create_app() -> Flask:
         from models.models import Admin
 
         # Проверяем, что переменные окружения заданы
-        admin_login = os.getenv("ADMIN_LOGIN")
-        admin_password = os.getenv("ADMIN_PASSWORD")
+        admin_login = os.getenv("ADMIN_LOGIN", "admin")
+        admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
 
         if not admin_login or not admin_password:
             logger.error("ADMIN_LOGIN или ADMIN_PASSWORD не заданы в .env")
             raise ValueError("ADMIN_LOGIN и ADMIN_PASSWORD должны быть заданы в .env")
 
-        # Создаем таблицы перед любыми запросами
-        try:
-            db.create_all()
-            logger.info("Таблицы базы данных созданы в веб-приложении")
-        except Exception as e:
-            logger.error(f"Ошибка при создании таблиц: {e}")
-            raise
-
-        # Проверяем и создаем/обновляем администратора
-        max_retries = 5
+        # Проверяем наличие администратора с повторными попытками
+        max_retries = 10
         retry_delay = 1  # секунды
         for attempt in range(max_retries):
             try:
                 admin = db.session.query(Admin).filter_by(login=admin_login).first()
                 if not admin:
-                    # Создаем нового администратора
-                    hashed_password = generate_password_hash(
-                        admin_password, method="pbkdf2:sha256"
+                    logger.warning(
+                        f"Администратор с логином {admin_login} не найден в базе данных на попытке {attempt + 1}/{max_retries}"
                     )
-                    admin = Admin(login=admin_login, password=hashed_password)
-                    db.session.add(admin)
-                    db.session.commit()
-                    logger.info(f"Создан администратор с логином: {admin_login}")
-                else:
-                    # Проверяем и обновляем пароль, если он отличается
-                    if not check_password_hash(admin.password, admin_password):
-                        admin.password = generate_password_hash(
-                            admin_password, method="pbkdf2:sha256"
+                    if attempt == max_retries - 1:
+                        logger.error(
+                            f"Администратор с логином {admin_login} не создан ботом после {max_retries} попыток"
                         )
-                        db.session.commit()
-                        logger.info(
-                            f"Обновлен пароль для администратора с логином: {admin_login}"
+                        raise ValueError(
+                            f"Администратор с логином {admin_login} должен быть создан ботом"
                         )
-                    else:
-                        logger.info(
-                            f"Администратор с логином {admin_login} уже существует с корректным паролем"
-                        )
+                    time.sleep(retry_delay)
+                    continue
                 break  # Успешно, выходим из цикла
             except OperationalError as e:
                 if "no such table" in str(e):
@@ -91,16 +73,11 @@ def create_app() -> Flask:
                 else:
                     logger.error(f"Ошибка базы данных при инициализации: {e}")
                     raise
-            except IntegrityError as e:
-                logger.error(f"Ошибка уникальности при создании администратора: {e}")
-                db.session.rollback()
-                logger.info("Администратор уже существует, пропускаем создание")
-                break
             except Exception as e:
                 logger.error(f"Неожиданная ошибка при инициализации: {e}")
                 raise
 
-    from .routes import init_routes
+    from web.routes import init_routes
 
     init_routes(app)
 

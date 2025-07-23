@@ -9,6 +9,12 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/data/bot_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   web:
     build:
@@ -23,7 +29,8 @@ services:
       - ./data:/data
     restart: unless-stopped
     depends_on:
-      - bot
+      bot:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/login"]
       interval: 10s
