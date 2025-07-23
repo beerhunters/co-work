@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
@@ -6,6 +6,7 @@ from models.models import User, Admin, Notification
 from .app import db
 import logging
 from datetime import datetime, timedelta
+from sqlalchemy import desc
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -21,26 +22,26 @@ def init_routes(app: Flask) -> None:
         logger.info(f"Количество непрочитанных уведомлений: {count}")
         return count
 
-    def get_recent_notifications(limit: int = 5) -> List[dict]:
-        """Получение последних непрочитанных уведомлений."""
+    def get_recent_notifications(limit: int = 5) -> List[Dict]:
+        """Возвращает последние уведомления в формате, подходящем для шаблона и AJAX."""
         notifications = (
             db.session.query(Notification)
-            .filter_by(is_read=0)
-            .order_by(Notification.created_at.desc())
+            .order_by(desc(Notification.created_at))
             .limit(limit)
             .all()
         )
-        logger.info(
-            f"Получено {len(notifications)} последних непрочитанных уведомлений"
-        )
         return [
             {
-                "id": notification.id,
-                "message": notification.message,
-                "created_at": notification.created_at.strftime("%Y-%m-%d %H:%M"),
-                "is_read": notification.is_read,
+                "id": n.id,
+                "message": n.message,
+                "created_at": (
+                    n.created_at.strftime("%Y-%m-%d %H:%M")
+                    if isinstance(n.created_at, datetime)
+                    else n.created_at
+                ),
+                "is_read": bool(n.is_read),
             }
-            for notification in notifications
+            for n in notifications
         ]
 
     @app.route("/login", methods=["GET", "POST"])
@@ -270,6 +271,26 @@ def init_routes(app: Flask) -> None:
         except Exception as e:
             logger.error(f"Ошибка получения уведомлений: {str(e)}")
             return jsonify({"error": "Ошибка сервера"}), 500
+
+    @app.route("/flash_message", methods=["POST"])
+    @login_required
+    def flash_message():
+        """Отправляет flash-сообщение через AJAX."""
+        try:
+            message = request.form.get("message")
+            category = request.form.get("category", "info")
+            if not message:
+                return (
+                    jsonify({"status": "error", "message": "Сообщение не указано"}),
+                    400,
+                )
+            flash(message, category)
+            return jsonify(
+                {"status": "success", "message": "Flash-сообщение добавлено"}
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке flash-сообщения: {e}")
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.route("/debug_db")
     @login_required
