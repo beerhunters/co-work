@@ -45,40 +45,18 @@ def init_routes(app: Flask) -> None:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        if current_user.is_authenticated:
-            return redirect(url_for("dashboard"))
-
         if request.method == "POST":
             login_name = request.form.get("login", "").strip()
             password = request.form.get("password", "")
-
-            if not login_name or not password:
-                flash("Пожалуйста, заполните все поля", "error")
-                return render_template("login.html")
-
-            try:
-                user = db.session.query(Admin).filter_by(login=login_name).first()
-
-                if user and check_password_hash(user.password, password):
-                    login_user(user, remember=True)
-                    flash("Вход выполнен успешно!", "success")
-
-                    # Перенаправляем на страницу, которую пытался посетить пользователь
-                    next_page = request.args.get("next")
-                    if next_page:
-                        return redirect(next_page)
-                    return redirect(url_for("dashboard"))
-                else:
-                    flash("Неверный логин или пароль", "error")
-                    logger.warning(
-                        f"Неудачная попытка входа для пользователя: {login_name}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Ошибка при входе в систему: {e}")
-                flash("Произошла ошибка при входе в систему", "error")
-                db.session.rollback()
-
+            user = db.session.query(Admin).filter_by(login=login_name).first()
+            if user and check_password_hash(user.password, password):
+                login_user(user)
+                next_page = request.args.get("next")
+                logger.info(f"Успешный вход администратора: {login_name}")
+                return redirect(next_page or url_for("dashboard"))
+            else:
+                logger.error(f"Неудачная попытка входа: логин={login_name}")
+                flash("Неверный логин или пароль", "error")
         return render_template("login.html")
 
     @app.route("/logout")
