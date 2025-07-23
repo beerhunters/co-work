@@ -45,19 +45,17 @@ def init_routes(app: Flask) -> None:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        """Обработка входа в систему."""
-        if current_user.is_authenticated:
-            return redirect(url_for("dashboard"))
+        """Обработка страницы входа."""
         if request.method == "POST":
             login = request.form.get("login")
             password = request.form.get("password")
             user = db.session.query(Admin).filter_by(login=login).first()
             if user and check_password_hash(user.password, password):
                 login_user(user)
-                logger.info(f"Админ {login} вошёл в систему")
+                logger.info(f"Успешный вход для пользователя '{login}'")
                 return redirect(url_for("dashboard"))
-            flash("Неверный логин или пароль")
-            logger.warning(f"Неудачная попытка входа для логина {login}")
+            logger.warning(f"Неудачная попытка входа для логина '{login}'")
+            return render_template("login.html", error="Неверный логин или пароль")
         return render_template("login.html")
 
     @app.route("/logout")
