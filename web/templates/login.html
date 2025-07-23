@@ -12,21 +12,61 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             min-height: 100vh;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
+            background: #1a1a2e;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
         }
 
         .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
+            animation: fadeInScale 0.5s ease-out;
+            position: relative;
+            z-index: 10;
+        }
+
+        .login-container.shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% {
+                transform: translateX(0);
+            }
+            20%, 60% {
+                transform: translateX(-10px);
+            }
+            40%, 80% {
+                transform: translateX(10px);
+            }
         }
 
         .login-header {
@@ -35,100 +75,164 @@
         }
 
         .login-header h1 {
-            color: #333;
-            font-size: 1.8rem;
+            color: #16213e;
+            font-size: 2rem;
+            font-weight: 600;
             margin-bottom: 0.5rem;
         }
 
         .login-header p {
-            color: #666;
-            font-size: 0.9rem;
+            color: #5a6a85;
+            font-size: 0.95rem;
         }
 
         .form-group {
             margin-bottom: 1.5rem;
+            position: relative;
         }
 
         .form-group label {
             display: block;
             margin-bottom: 0.5rem;
-            color: #555;
+            color: #16213e;
             font-weight: 500;
+            font-size: 0.9rem;
+            transition: color 0.3s ease;
         }
 
         .form-group input {
             width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            padding: 0.9rem;
+            border: 1px solid #e0e6f0;
+            border-radius: 8px;
             font-size: 1rem;
-            transition: border-color 0.3s ease;
+            background: #f8fafc;
+            transition: all 0.3s ease;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+            border-color: #4e5bff;
+            box-shadow: 0 0 8px rgba(78, 91, 255, 0.3);
+            transform: scale(1.02);
+            background: #fff;
         }
 
         .login-btn {
             width: 100%;
-            padding: 0.75rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0.9rem;
+            background: linear-gradient(135deg, #4e5bff 0%, #8a4bff 100%);
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 1rem;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: transform 0.3s ease, background 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
 
         .login-btn:hover {
-            transform: translateY(-1px);
+            background: linear-gradient(135deg, #3b46cc 0%, #7633cc 100%);
+            transform: translateY(-2px);
         }
 
         .login-btn:active {
             transform: translateY(0);
         }
 
+        .ripple {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: rippleEffect 0.6s linear;
+            pointer-events: none;
+        }
+
+        @keyframes rippleEffect {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
         .flash-messages {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         .flash-message {
             padding: 0.75rem;
-            border-radius: 5px;
+            border-radius: 6px;
             margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            animation: slideIn 0.3s ease;
         }
 
         .flash-message.error {
-            background-color: #fee;
-            border: 1px solid #fcc;
-            color: #c33;
+            background-color: #ffe6e6;
+            border: 1px solid #ffcccc;
+            color: #cc3333;
         }
 
         .flash-message.success {
-            background-color: #efe;
-            border: 1px solid #cfc;
-            color: #363;
+            background-color: #e6ffed;
+            border: 1px solid #ccffcc;
+            color: #336633;
         }
 
         .flash-message.info {
-            background-color: #eef;
-            border: 1px solid #ccf;
-            color: #336;
+            background-color: #e6f0ff;
+            border: 1px solid #ccccff;
+            color: #333366;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .version-info {
             text-align: center;
             margin-top: 2rem;
-            color: #999;
-            font-size: 0.8rem;
+            color: #8a9ab5;
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+
+        @media (max-width: 576px) {
+            .login-container {
+                padding: 1.5rem;
+                max-width: 90%;
+            }
+
+            .login-header h1 {
+                font-size: 1.6rem;
+            }
+
+            .login-header p {
+                font-size: 0.85rem;
+            }
+
+            .form-group input {
+                padding: 0.8rem;
+            }
+
+            .login-btn {
+                padding: 0.8rem;
+            }
         }
     </style>
 </head>
 <body>
+    <canvas id="particles"></canvas>
     <div class="login-container">
         <div class="login-header">
             <h1>Админ-панель</h1>
@@ -145,7 +249,7 @@
             {% endwith %}
         </div>
 
-        <form method="POST">
+        <form method="POST" id="login-form">
             <div class="form-group">
                 <label for="login">Логин:</label>
                 <input type="text" id="login" name="login" required
@@ -157,12 +261,130 @@
                 <input type="password" id="password" name="password" required>
             </div>
 
-            <button type="submit" class="login-btn">Войти</button>
+            <button type="submit" class="login-btn" id="login-btn">Войти</button>
         </form>
 
         <div class="version-info">
             Система управления v1.0
         </div>
     </div>
+
+    <script>
+        // Shake-анимация при появлении flash-сообщения категории error
+        document.addEventListener('DOMContentLoaded', function() {
+            const flashMessages = document.querySelectorAll('.flash-message.error');
+            const loginContainer = document.querySelector('.login-container');
+
+            if (flashMessages.length > 0) {
+                loginContainer.classList.add('shake');
+                setTimeout(() => {
+                    loginContainer.classList.remove('shake');
+                }, 400); // Убираем класс после анимации (длительность 0.4s)
+            }
+        });
+
+        // Эффект волн (ripple) на кнопке
+        document.getElementById('login-btn').addEventListener('click', function(e) {
+            const btn = this;
+            const ripple = document.createElement('span');
+            ripple.classList.add('ripple');
+
+            // Вычисляем позицию клика относительно кнопки
+            const rect = btn.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            ripple.style.left = `${x}px`;
+            ripple.style.top = `${y}px`;
+            btn.appendChild(ripple);
+
+            // Удаляем элемент после завершения анимации
+            setTimeout(() => {
+                ripple.remove();
+            }, 600);
+        });
+
+        // Частицы для фона
+        const canvas = document.getElementById('particles');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particlesArray = [];
+        const numberOfParticles = 50;
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 1 - 0.5;
+                this.speedY = Math.random() * 1 - 0.5;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                if (this.size > 0.2) this.size -= 0.01;
+
+                if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+            }
+
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            for (let i = 0; i < numberOfParticles; i++) {
+                particlesArray.push(new Particle());
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+                particlesArray[i].draw();
+
+                // Соединяем близкие частицы линиями
+                for (let j = i; j < particlesArray.length; j++) {
+                    const dx = particlesArray[i].x - particlesArray[j].x;
+                    const dy = particlesArray[i].y - particlesArray[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 100) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${1 - distance / 100})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particlesArray[i].x, particlesArray[i].y);
+                        ctx.lineTo(particlesArray[j].x, particlesArray[j].y);
+                        ctx.stroke();
+                    }
+                }
+
+                // Удаляем и воссоздаем частицы, если их размер слишком мал
+                if (particlesArray[i].size <= 0.2) {
+                    particlesArray.splice(i, 1);
+                    i--;
+                    particlesArray.push(new Particle());
+                }
+            }
+            requestAnimationFrame(animateParticles);
+        }
+
+        // Адаптация canvas при изменении размера окна
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        initParticles();
+        animateParticles();
+    </script>
 </body>
 </html>

@@ -8,70 +8,230 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='adminlte/dist/css/adminlte.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
+        /* Общие стили */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f4f7fa;
+        }
+
+        .wrapper {
+            background: linear-gradient(135deg, #e6f0ff 0%, #f4f7fa 100%);
+            min-height: 100vh;
+        }
+
+        /* Стили для navbar */
+        .main-header.navbar {
+            background: linear-gradient(135deg, #2a2e4a 0%, #3b3f5c 100%);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .navbar-nav .nav-link {
+            color: #e6e6ff; /* Светлый шрифт для лучшей читаемости */
+            transition: color 0.3s ease;
+        }
+
+        .navbar-nav .nav-link:hover {
+            color: #4e5bff;
+        }
+
+        /* Колокольчик и кнопка "Выйти" */
+        #notification-bell {
+            color: #ffffff; /* Белый цвет для колокольчика */
+        }
+
+        #notification-bell:hover {
+            color: #4e5bff;
+        }
+
+        .nav-link.logout-link {
+            color: #ffffff; /* Белый цвет для кнопки "Выйти" */
+        }
+
+        .nav-link.logout-link:hover {
+            color: #4e5bff;
+        }
+
+        /* Стили для бокового меню */
+        .main-sidebar {
+            background: linear-gradient(180deg, #2a2e4a 0%, #1a1c2e 100%);
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .brand-link {
+            color: #e6e6ff; /* Светлый шрифт */
+            font-weight: 600;
+            transition: transform 0.3s ease;
+        }
+
+        .brand-link:hover {
+            transform: translateX(5px);
+        }
+
+        .nav-sidebar .nav-item .nav-link {
+            color: #e6e6ff; /* Светлый шрифт */
+            transition: all 0.3s ease;
+        }
+
+        .nav-sidebar .nav-item .nav-link:hover {
+            color: #ffffff;
+            background: rgba(78, 91, 255, 0.1);
+            transform: scale(1.05);
+        }
+
+        .nav-sidebar .nav-item .nav-link.active {
+            background: #4e5bff;
+            color: #ffffff;
+        }
+
+        /* Стили для контента */
+        .content-wrapper {
+            animation: slideIn 0.3s ease-out;
+            background: transparent;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0.8;
+                transform: translateY(5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         /* Стили для выпадающего меню уведомлений */
         .dropdown-menu-lg {
-            min-width: 300px;
-            max-width: 400px;
+            min-width: 320px;
+            max-width: 420px;
             max-height: 400px;
             overflow-y: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+            background: #ffffff;
         }
+
         .dropdown-header {
             font-size: 1rem;
-            font-weight: 500;
+            font-weight: 600;
             padding: 12px 16px;
             background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid #e0e6f0;
+            color: #16213e;
         }
+
         .notification-item {
             display: flex;
             align-items: center;
             padding: 12px 16px;
             font-size: 0.9rem;
             color: #333;
-            transition: background-color 0.2s ease;
+            transition: all 0.3s ease;
             position: relative;
         }
+
         .notification-item.unread {
             background-color: #e6f3ff;
             font-weight: 500;
         }
+
         .notification-item:hover {
             background-color: #f1f3f5;
+            transform: translateX(5px);
         }
+
         .notification-item i {
             margin-right: 10px;
-            color: #007bff;
+            color: #4e5bff;
         }
+
         .notification-item.unread i {
             color: #dc3545;
         }
+
         .notification-item .notification-text {
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
         .notification-item .notification-time {
             font-size: 0.8rem;
             color: #6c757d;
             margin-left: 10px;
             white-space: nowrap;
         }
+
         .dropdown-footer {
             padding: 10px 16px;
             text-align: center;
             background: #f8f9fa;
-            border-top: 1px solid #dee2e6;
+            border-top: 1px solid #e0e6f0;
         }
+
         .dropdown-footer a {
-            color: #007bff;
-            font-weight: 500;
+            color: #4e5bff;
+            font-weight: 600;
         }
+
         .dropdown-footer a:hover {
             text-decoration: underline;
+            color: #3b46cc;
         }
+
+        /* Стили для всплывающего уведомления (toast) */
+        .toast-notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+            z-index: 1040;
+            display: none;
+            max-width: 320px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.3s ease;
+        }
+
+        .toast-notification.show {
+            display: block;
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .toast-notification .toast-message {
+            margin: 0;
+        }
+
+        /* Ripple-эффект для колокольчика */
+        .notification-bell-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .ripple {
+            position: absolute;
+            background: rgba(78, 91, 255, 0.3);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: rippleEffect 0.6s linear;
+            pointer-events: none;
+        }
+
+        @keyframes rippleEffect {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
         @media (max-width: 576px) {
             .dropdown-menu-lg {
                 min-width: 100%;
@@ -79,12 +239,20 @@
                 margin: 0;
                 border-radius: 0;
             }
+
             .notification-item {
                 font-size: 0.85rem;
                 padding: 10px 12px;
             }
+
             .notification-item .notification-time {
                 font-size: 0.75rem;
+            }
+
+            .toast-notification {
+                max-width: 90%;
+                right: 10px;
+                top: 70px;
             }
         }
     </style>
@@ -98,7 +266,7 @@
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
-            <li class="nav-item dropdown">
+            <li class="nav-item dropdown notification-bell-container">
                 <a id="notification-bell" class="nav-link" data-toggle="dropdown" href="#">
                     <i class="far fa-bell"></i>
                     <span id="notification-count" class="badge badge-warning navbar-badge" style="{% if unread_notifications == 0 %}display: none;{% endif %}">{{ unread_notifications }}</span>
@@ -119,7 +287,7 @@
             </li>
             {% if current_user.is_authenticated %}
             <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('logout') }}">Выйти</a>
+                <a class="nav-link logout-link" href="{{ url_for('logout') }}">Выйти</a>
             </li>
             {% endif %}
         </ul>
@@ -165,12 +333,12 @@
         </section>
         <section class="content">
             <div class="container-fluid">
-                {% with messages = get_flashed_messages() %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
-                <div class="alert alert-info alert-dismissible">
+                <div class="alert alert-dismissible fade show" role="alert">
                     <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                    {% for message in messages %}
-                    {{ message }}<br>
+                    {% for category, message in messages %}
+                    <div class="alert-{{ category }}">{{ message }}</div>
                     {% endfor %}
                 </div>
                 {% endif %}
@@ -182,8 +350,10 @@
     <footer class="main-footer">
         <strong>Управление коворкингом © 2025</strong>
     </footer>
-    <!-- Элемент для воспроизведения звука уведомления -->
-    <audio id="notification-sound" src="{{ url_for('static', filename='notification.mp3') }}" preload="auto"></audio>
+    <!-- Элемент для всплывающего уведомления -->
+    <div id="toast-notification" class="toast-notification">
+        <p class="toast-message"></p>
+    </div>
 </div>
 <script src="{{ url_for('static', filename='adminlte/plugins/jquery/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='adminlte/plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
@@ -191,37 +361,17 @@
 <script>
     // Переменная для хранения предыдущего количества непрочитанных уведомлений
     let previousUnreadCount = 0;
-    // Флаг, указывающий, разблокировано ли воспроизведение звука
-    let isSoundUnlocked = localStorage.getItem('soundUnlocked') === 'true';
 
-    // Функция для воспроизведения звука уведомления
-    function playNotificationSound() {
-        if (!isSoundUnlocked) {
-            // Показываем flash-сообщение, если звук заблокирован
-            $.ajax({
-                url: '{{ url_for("flash_message") }}',
-                method: 'POST',
-                data: { message: 'Кликните по колокольчику, чтобы включить звуковые уведомления', category: 'info' },
-                success: function() {
-                    console.log('Flash-сообщение отправлено');
-                }
-            });
-            return;
-        }
-        const sound = document.getElementById('notification-sound');
-        if (sound) {
-            sound.play().catch(function(error) {
-                console.error('Ошибка воспроизведения звука:', error);
-                $.ajax({
-                    url: '{{ url_for("flash_message") }}',
-                    method: 'POST',
-                    data: { message: 'Кликните по колокольчику, чтобы включить звуковые уведомления', category: 'info' },
-                    success: function() {
-                        console.log('Flash-сообщение отправлено');
-                    }
-                });
-            });
-        }
+    // Функция для отображения всплывающего уведомления
+    function showToast(message) {
+        const toast = document.getElementById('toast-notification');
+        const toastMessage = toast.querySelector('.toast-message');
+        toastMessage.textContent = message;
+        toast.classList.add('show');
+        // Скрываем уведомление через 5 секунд
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 5000);
     }
 
     // Функция для обновления уведомлений через AJAX
@@ -240,9 +390,12 @@
                     countElement.hide();
                     headerElement.text('Нет новых уведомлений');
                 }
-                // Воспроизведение звука, если появилось новое уведомление
+                // Показываем последнее уведомление в toast, если появилось новое
                 if (data.unread_count > previousUnreadCount) {
-                    playNotificationSound();
+                    const latestNotification = data.recent_notifications[0];
+                    if (latestNotification) {
+                        showToast(latestNotification.message);
+                    }
                 }
                 previousUnreadCount = data.unread_count;
                 // Обновление списка уведомлений
@@ -267,20 +420,22 @@
         });
     }
 
-    // Обработка нажатия на колокольчик для разблокировки звука
+    // Обработка нажатия на колокольчик для ripple-эффекта
     $(document).ready(function() {
-        $('#notification-bell').on('click', function() {
-            if (!isSoundUnlocked) {
-                isSoundUnlocked = true;
-                localStorage.setItem('soundUnlocked', 'true');
-                // Тестовое воспроизведение звука для разблокировки
-                const sound = document.getElementById('notification-sound');
-                if (sound) {
-                    sound.play().catch(function(error) {
-                        console.error('Ошибка тестового воспроизведения:', error);
-                    });
-                }
-            }
+        $('#notification-bell').on('click', function(e) {
+            // Ripple-эффект
+            const bell = this;
+            const ripple = document.createElement('span');
+            ripple.classList.add('ripple');
+            const rect = bell.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            ripple.style.left = `${x}px`;
+            ripple.style.top = `${y}px`;
+            bell.parentElement.appendChild(ripple);
+            setTimeout(() => {
+                ripple.remove();
+            }, 600);
         });
 
         updateNotifications(); // Первоначальное обновление
