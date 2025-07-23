@@ -24,7 +24,6 @@ class User(Base):
     """Модель пользователя."""
 
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False)
     first_join_time = Column(
@@ -43,28 +42,23 @@ class Admin(Base):
     """Модель администратора."""
 
     __tablename__ = "admins"
-
     id = Column(Integer, primary_key=True)
     login = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
 
     @property
     def is_active(self) -> bool:
-        """Активен ли пользователь."""
         return True
 
     @property
     def is_authenticated(self) -> bool:
-        """Аутентифицирован ли пользователь."""
         return True
 
     @property
     def is_anonymous(self) -> bool:
-        """Является ли пользователь анонимным."""
         return False
 
     def get_id(self) -> str:
-        """Получение идентификатора пользователя."""
         return str(self.id)
 
 
@@ -72,7 +66,6 @@ class Notification(Base):
     """Модель уведомления."""
 
     __tablename__ = "notifications"
-
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
     message = Column(String, nullable=False)
@@ -88,11 +81,8 @@ def init_db() -> None:
         "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
     )
     with engine.connect() as connection:
-        # Настройка WAL-режима
         connection.execute(text("PRAGMA journal_mode=WAL"))
         logger.info("WAL-режим успешно включён")
-
-        # Создание таблиц
         Base.metadata.create_all(engine)
         logger.info("Таблицы базы данных созданы")
 
@@ -153,12 +143,7 @@ def add_user(
             logger.info(
                 f"Уведомление создано для пользователя {user.id}: {notification.message}"
             )
-        else:
-            logger.warning(
-                f"Уведомление не создано для {telegram_id}: неполные данные (full_name={full_name}, phone={phone}, email={email})"
-            )
         session.commit()
-        logger.info(f"Пользователь {telegram_id} добавлен или обновлён в БД")
     except Exception as e:
         session.rollback()
         logger.error(

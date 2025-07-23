@@ -124,7 +124,6 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         )
         await message.answer("Регистрация завершена!")
         logger.info(f"Пользователь {message.from_user.id} успешно зарегистрирован")
-
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:

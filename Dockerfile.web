@@ -11,4 +11,4 @@ COPY models/ ./models
 COPY web/templates/ ./web/templates
 COPY web/static/ ./web/static
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "web.app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "web.app:app"]

@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import List
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
 from models.models import User, Admin, Notification
-from web.app import db
+from .app import db
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ def init_routes(app: Flask) -> None:
         logger.info(f"Количество непрочитанных уведомлений: {count}")
         return count
 
-    def get_recent_notifications(limit: int = 5) -> list:
+    def get_recent_notifications(limit: int = 5) -> List[dict]:
         """Получение последних непрочитанных уведомлений."""
         notifications = (
             db.session.query(Notification)
@@ -230,6 +230,29 @@ def init_routes(app: Flask) -> None:
             logger.error(
                 f"Ошибка при пометке уведомления {notification_id} как прочитанного: {str(e)}"
             )
+            return jsonify({"status": "error", "message": "Ошибка сервера"}), 500
+
+    @app.route("/notifications/clean_old", methods=["POST"])
+    @login_required
+    def clean_old_notifications():
+        """Удаление прочитанных уведомлений старше 30 дней."""
+        try:
+            threshold = datetime.now(MOSCOW_TZ) - timedelta(days=30)
+            deleted = (
+                db.session.query(Notification)
+                .filter(Notification.is_read == 1, Notification.created_at < threshold)
+                .delete()
+            )
+            db.session.commit()
+            flash(f"Удалено {deleted} старых прочитанных уведомлений")
+            logger.info(f"Удалено {deleted} старых прочитанных уведомлений")
+            return jsonify(
+                {"status": "success", "message": f"Удалено {deleted} уведомлений"}
+            )
+        except Exception as e:
+            db.session.rollback()
+            flash("Ошибка при очистке уведомлений")
+            logger.error(f"Ошибка при очистке уведомлений: {str(e)}")
             return jsonify({"status": "error", "message": "Ошибка сервера"}), 500
 
     @app.route("/get_notifications", methods=["GET"])
