@@ -22,6 +22,8 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+    depends_on:
+      - bot
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/login"]
       interval: 10s

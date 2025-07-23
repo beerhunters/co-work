@@ -243,28 +243,6 @@ def init_db() -> None:
         logger.info("Таблицы базы данных созданы")
 
 
-def create_admin(admin_login, admin_password):
-    from werkzeug.security import generate_password_hash
-
-    session = Session()
-    try:
-        admin = session.query(Admin).filter_by(login=admin_login).first()
-        if not admin:
-            hashed_password = generate_password_hash(
-                admin_password, method="pbkdf2:sha256"
-            )
-            admin = Admin(login=admin_login, password=hashed_password)
-            session.add(admin)
-            session.commit()
-            logger.info(f"Создан администратор с логином: {admin_login}")
-        else:
-            logger.info(f"Администратор с логином {admin_login} уже существует")
-    except IntegrityError as e:
-        logger.error(f"Ошибка уникальности при создании администратора: {e}")
-        session.rollback()
-        logger.info("Администратор уже существует, пропускаем создание")
-
-
 def check_and_add_user(
     telegram_id: int, username: Optional[str] = None
 ) -> Tuple[Optional[User], bool]:
