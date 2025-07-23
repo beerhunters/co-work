@@ -1,18 +1,17 @@
-from typing import Any, Optional
-from aiogram import Router, F, Bot, Dispatcher
+import logging
+import os
+import re
+from datetime import datetime
+
+import pytz
+from aiogram import Router, Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-import re
-from models.models import User, add_user
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
-import pytz
+from aiogram.types import Message
 from dotenv import load_dotenv
-import os
-import logging
+
+from models.models import add_user, check_and_add_user
 
 load_dotenv()
 
@@ -20,7 +19,6 @@ router = Router()
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
-print(ADMIN_TELEGRAM_ID, type(ADMIN_TELEGRAM_ID))
 
 
 class Registration(StatesGroup):
@@ -34,41 +32,19 @@ class Registration(StatesGroup):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     """Обработчик команды /start."""
-    from models.models import init_db
-
-    init_db()
-    logger.info(f"Пользователь {message.from_user.id} начал взаимодействие")
-
-    engine = create_engine(
-        "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
+    # Проверяем пользователя и полноту его данных
+    user, is_complete = check_and_add_user(
+        telegram_id=message.from_user.id, username=message.from_user.username
     )
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    try:
-        user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-        if user:
-            if not all([user.full_name, user.phone, user.email]):
-                await message.answer(
-                    "Вы уже зарегистрированы, но некоторые данные отсутствуют. Введите ваше ФИО:"
-                )
-                await state.set_state(Registration.full_name)
-                return
-            else:
-                await message.answer(
-                    f"Добро пожаловать, {user.full_name}! Вы уже зарегистрированы."
-                )
-                return
-        else:
-            add_user(
-                telegram_id=message.from_user.id, username=message.from_user.username
-            )
-            await message.answer(
-                "Добро пожаловать! Введите ваше ФИО для завершения регистрации:"
-            )
-            await state.set_state(Registration.full_name)
-    finally:
-        session.close()
+    if is_complete:
+        await message.answer(
+            f"Добро пожаловать, {user.full_name}! Вы уже зарегистрированы."
+        )
+    else:
+        await message.answer(
+            "Добро пожаловать! Введите ваше ФИО для завершения регистрации:"
+        )
+        await state.set_state(Registration.full_name)
 
 
 @router.message(Registration.full_name)
@@ -87,7 +63,7 @@ async def process_full_name(message: Message, state: FSMContext) -> None:
 async def process_phone(message: Message, state: FSMContext) -> None:
     """Обработка ввода номера телефона."""
     phone = message.text.strip()
-    if not re.match(r"^\+?8?\d{10}$", phone):
+    if not re.match(r"^(?:\+?\d{11})$", phone):
         await message.answer(
             "Неверный формат телефона. Используйте +79991112233 или 89991112233. Попробуйте снова:"
         )

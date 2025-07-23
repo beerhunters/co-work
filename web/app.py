@@ -1,9 +1,13 @@
+import os
 from typing import Optional
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 import logging
 from models.models import Admin
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +40,12 @@ def create_app() -> Flask:
         if not admin:
             from werkzeug.security import generate_password_hash
 
-            admin = Admin(login="admin", password=generate_password_hash("admin"))
+            admin = (
+                Admin(
+                    login=os.getenv("ADMIN_LOGIN"),
+                    password=generate_password_hash(os.getenv("ADMIN_PASSWORD")),
+                ),
+            )
             db.session.add(admin)
             db.session.commit()
             logger.info("Тестовый администратор создан")
