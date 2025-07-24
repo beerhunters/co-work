@@ -23,14 +23,37 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
 
-def create_register_keyboard():
+def create_register_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для начала регистрации.
+
+    Returns:
+        InlineKeyboardMarkup с кнопкой для начала регистрации.
+    """
+    logger.debug("Создание инлайн-клавиатуры для регистрации")
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Регистрация", callback_data="start_registration"
+                    text="Начать регистрацию", callback_data="start_registration"
                 )
             ]
+        ]
+    )
+    return keyboard
+
+
+def create_agreement_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для подтверждения согласия с правилами.
+
+    Returns:
+        InlineKeyboardMarkup с кнопкой "Согласен".
+    """
+    logger.debug("Создание инлайн-клавиатуры для согласия с правилами")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Согласен", callback_data="agree_to_terms")]
         ]
     )
     return keyboard
@@ -39,6 +62,7 @@ def create_register_keyboard():
 class Registration(StatesGroup):
     """Состояния для процесса регистрации."""
 
+    agreement = State()
     full_name = State()
     phone = State()
     email = State()
@@ -46,8 +70,18 @@ class Registration(StatesGroup):
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
-    """Обработчик команды /start."""
+    """
+    Обработчик команды /start.
+
+    Проверяет регистрацию пользователя и предлагает начать регистрацию, если она не завершена.
+
+    Args:
+        message: Входящее сообщение от пользователя.
+        state: Контекст конечного автомата для управления состоянием.
+    """
+    logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
     if not message.from_user:
+        logger.warning("Не удалось определить пользователя для команды /start")
         await message.answer("Не удалось определить пользователя.")
         return
 
@@ -56,6 +90,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     )
 
     if not result:
+        logger.error(f"Ошибка при регистрации пользователя {message.from_user.id}")
         await message.answer("Произошла ошибка при регистрации. Попробуйте позже.")
         return
 
@@ -63,20 +98,92 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
     if is_complete:
         full_name = user.full_name or "Пользователь"
+        logger.debug(
+            f"Пользователь {message.from_user.id} уже полностью зарегистрирован: {full_name}"
+        )
         await message.answer(f"Добро пожаловать, {full_name}! Вы уже зарегистрированы.")
     else:
+        logger.debug(f"Пользователь {message.from_user.id} не завершил регистрацию")
         await message.answer(
             "Добро пожаловать!", reply_markup=create_register_keyboard()
         )
 
 
 @router.callback_query(F.data == "start_registration")
-async def start_registration(callback_query: CallbackQuery, state: FSMContext):
+async def start_registration(callback_query: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработчик нажатия кнопки "Начать регистрацию".
+
+    Запрашивает подтверждение согласия с обработкой данных и правилами коворкинга.
+
+    Args:
+        callback_query: Объект callback-запроса.
+        state: Контекст конечного автомата.
+    """
+    logger.info(f"Начало регистрации для пользователя {callback_query.from_user.id}")
     await callback_query.message.answer(
-        "Введите ваше ФИО:",
+        'Продолжая регистрацию, вы соглашаетесь с обработкой персональных данных и <a href="https://parta-works.ru/main_rules">правилами коворкинга</a>.',
+        reply_markup=create_agreement_keyboard(),
+        parse_mode="HTML",
     )
     await callback_query.answer()
+    await state.set_state(Registration.agreement)
+
+
+@router.callback_query(F.data == "agree_to_terms")
+async def agree_to_terms(callback_query: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработчик нажатия кнопки "Согласен".
+
+    Обновляет сообщение, добавляя зелёную галочку, и запрашивает ФИО.
+
+    Args:
+        callback_query: Объект callback-запроса.
+        state: Контекст конечного автомата.
+    """
+    logger.info(f"Пользователь {callback_query.from_user.id} согласился с правилами")
+    try:
+        add_user(telegram_id=callback_query.from_user.id, agreed_to_terms=True)
+    except Exception as e:
+        logger.error(
+            f"Ошибка при обновлении agreed_to_terms для пользователя {callback_query.from_user.id}: {e}"
+        )
+        await callback_query.message.answer("Произошла ошибка. Попробуйте снова.")
+        return
+    await callback_query.message.edit_reply_markup(
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Согласен 🟢", callback_data="agree_to_terms"
+                    )
+                ]
+            ]
+        )
+    )
+    await callback_query.message.answer("Введите ваше ФИО для завершения регистрации:")
     await state.set_state(Registration.full_name)
+
+
+@router.message(Registration.agreement)
+async def handle_invalid_agreement(message: Message, state: FSMContext) -> None:
+    """
+    Обработчик некорректного ввода на этапе согласия.
+
+    Повторно запрашивает согласие.
+
+    Args:
+        message: Входящее сообщение.
+        state: Контекст конечного автомата.
+    """
+    logger.warning(
+        f"Некорректный ввод на этапе согласия от пользователя {message.from_user.id}"
+    )
+    await message.answer(
+        'Пожалуйста, нажмите кнопку "Согласен" для продолжения регистрации. <a href="https://parta-works.ru/main_rules">Правила коворкинга</a>.',
+        reply_markup=create_agreement_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 @router.message(Registration.full_name)
@@ -130,7 +237,8 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
             username=message.from_user.username,
             reg_date=datetime.now(MOSCOW_TZ),
         )
-        await message.answer("Регистрация завершена!")
+        agreement_status = "Вы согласились с правилами коворкинга."
+        await message.answer("Регистрация завершена!\n\n" + agreement_status)
         logger.info(f"Пользователь {message.from_user.id} успешно зарегистрирован")
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:

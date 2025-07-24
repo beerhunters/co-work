@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     DateTime,
     text,
+    Boolean,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -46,6 +47,7 @@ class User(Base):
     successful_bookings = Column(Integer, default=0)
     language_code = Column(String, default="ru")
     reg_date = Column(DateTime)
+    agreed_to_terms = Column(Boolean, default=False)
 
 
 class Admin(Base):
@@ -176,6 +178,7 @@ def add_user(
     email: Optional[str] = None,
     username: Optional[str] = None,
     reg_date: Optional[datetime] = None,
+    agreed_to_terms: Optional[bool] = None,
 ) -> None:
     """Добавление или обновление пользователя в БД и создание уведомления."""
     session = Session()
@@ -194,6 +197,11 @@ def add_user(
                 user.username = username
             if reg_date is not None:
                 user.reg_date = reg_date
+            if agreed_to_terms is not None:
+                user.agreed_to_terms = agreed_to_terms
+                logger.debug(
+                    f"Флаг agreed_to_terms обновлён для пользователя {telegram_id}: {agreed_to_terms}"
+                )
         else:
             logger.info(f"Создание нового пользователя {telegram_id}")
             user = User(
@@ -206,6 +214,9 @@ def add_user(
                 successful_bookings=0,
                 language_code="ru",
                 reg_date=reg_date or datetime.now(MOSCOW_TZ),
+                agreed_to_terms=(
+                    agreed_to_terms if agreed_to_terms is not None else False
+                ),
             )
             session.add(user)
             session.flush()  # Получаем user.id до коммита
