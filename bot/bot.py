@@ -1,10 +1,8 @@
 import os
-from typing import Optional
 import asyncio
-import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from .handlers import register_handlers
+from .hndlrs.registration_hndlr import register_handlers
 from models.models import init_db, create_admin
 from dotenv import load_dotenv
 from utils.logger import setup_logger

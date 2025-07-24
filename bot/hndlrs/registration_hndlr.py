@@ -3,11 +3,12 @@ import re
 from datetime import datetime
 
 import pytz
-from aiogram import Router, Bot, Dispatcher
+from aiogram import Router, Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
 from models.models import add_user, check_and_add_user
@@ -22,6 +23,19 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
 
+def create_register_keyboard():
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Регистрация", callback_data="start_registration"
+                )
+            ]
+        ]
+    )
+    return keyboard
+
+
 class Registration(StatesGroup):
     """Состояния для процесса регистрации."""
 
@@ -33,19 +47,36 @@ class Registration(StatesGroup):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     """Обработчик команды /start."""
-    # Проверяем пользователя и полноту его данных
-    user, is_complete = check_and_add_user(
+    if not message.from_user:
+        await message.answer("Не удалось определить пользователя.")
+        return
+
+    result = check_and_add_user(
         telegram_id=message.from_user.id, username=message.from_user.username
     )
+
+    if not result:
+        await message.answer("Произошла ошибка при регистрации. Попробуйте позже.")
+        return
+
+    user, is_complete = result
+
     if is_complete:
-        await message.answer(
-            f"Добро пожаловать, {user.full_name}! Вы уже зарегистрированы."
-        )
+        full_name = user.full_name or "Пользователь"
+        await message.answer(f"Добро пожаловать, {full_name}! Вы уже зарегистрированы.")
     else:
         await message.answer(
-            "Добро пожаловать! Введите ваше ФИО для завершения регистрации:"
+            "Добро пожаловать!", reply_markup=create_register_keyboard()
         )
-        await state.set_state(Registration.full_name)
+
+
+@router.callback_query(F.data == "start_registration")
+async def start_registration(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.answer(
+        "Введите ваше ФИО:",
+    )
+    await callback_query.answer()
+    await state.set_state(Registration.full_name)
 
 
 @router.message(Registration.full_name)

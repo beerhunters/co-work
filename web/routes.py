@@ -1,14 +1,15 @@
-from typing import List, Dict
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
-from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash
-from models.models import User, Admin, Notification
-from .app import db
-import logging
 from datetime import datetime, timedelta
-from sqlalchemy import desc
+from typing import List, Dict
+
 import pytz
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
+from flask_login import login_user, logout_user, login_required
+from sqlalchemy import desc
+from werkzeug.security import check_password_hash
+
+from models.models import User, Admin, Notification
 from utils.logger import setup_logger
+from .app import db
 
 logger = setup_logger(__name__)
 
