@@ -7,14 +7,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from .handlers import register_handlers
 from models.models import init_db, create_admin
 from dotenv import load_dotenv
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 load_dotenv()
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 
 async def main() -> None:

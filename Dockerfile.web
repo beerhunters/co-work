@@ -7,6 +7,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Создаем папку data и даем права на запись
 RUN mkdir -p /data && chown -R appuser:appuser /data
+RUN mkdir -p /app/logs && chown -R appuser:appuser /app/logs
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -16,6 +17,7 @@ COPY web/ ./web
 COPY models/ ./models
 COPY web/templates/ ./web/templates
 COPY web/static/ ./web/static
+COPY utils/ ./utils
 
 # Меняем владельца файлов
 RUN chown -R appuser:appuser /app

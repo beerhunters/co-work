@@ -12,11 +12,13 @@ from aiogram.types import Message
 from dotenv import load_dotenv
 
 from models.models import add_user, check_and_add_user
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 load_dotenv()
 
 router = Router()
-logger = logging.getLogger(__name__)
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 

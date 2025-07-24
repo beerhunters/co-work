@@ -15,8 +15,11 @@ from datetime import datetime
 import pytz
 import logging
 from werkzeug.security import generate_password_hash, check_password_hash
+from utils.logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
+
+# logger = logging.getLogger(__name__)
 Base = declarative_base()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 

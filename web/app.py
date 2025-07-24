@@ -7,8 +7,10 @@ import os
 from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 import time
+from utils.logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
+# logger = logging.getLogger(__name__)
 db = SQLAlchemy()
 login_manager = LoginManager()
 
@@ -21,12 +23,16 @@ def create_app() -> Flask:
         Flask: Настроенное приложение Flask.
     """
     load_dotenv()  # Загружаем переменные из .env
-    logging.basicConfig(level=logging.INFO)
+    # logging.basicConfig(level=logging.INFO)
 
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:////data/coworking.db"
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "default-secret-key")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    # Отключаем стандартное логирование Flask
+    logging.getLogger("werkzeug").handlers.clear()
+    logging.getLogger("werkzeug").setLevel(logging.CRITICAL)
 
     db.init_app(app)
     login_manager.init_app(app)

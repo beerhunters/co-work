@@ -8,8 +8,11 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy import desc
 import pytz
+from utils.logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
+
+# logger = logging.getLogger(__name__)
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
