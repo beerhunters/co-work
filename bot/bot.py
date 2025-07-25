@@ -2,7 +2,7 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from .hndlrs.registration_hndlr import register_handlers
+from .hndlrs.registration_hndlr import register_reg_handlers
 from models.models import init_db, create_admin
 from dotenv import load_dotenv
 from utils.logger import setup_logger
@@ -38,7 +38,7 @@ async def main() -> None:
         dp = Dispatcher(storage=MemoryStorage())
 
         # Регистрация обработчиков
-        register_handlers(dp)
+        register_reg_handlers(dp)
 
         logger.info("Бот запущен")
         await dp.start_polling(bot)

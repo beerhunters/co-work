@@ -53,6 +53,32 @@ def create_agreement_keyboard() -> InlineKeyboardMarkup:
     return keyboard
 
 
+def create_user_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для начала регистрации.
+    """
+    logger.debug("Создание инлайн-клавиатуры для пользователя")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Информация", callback_data="info")]
+        ]
+    )
+    return keyboard
+
+
+def create_back_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для начала регистрации.
+    """
+    logger.debug("Создание инлайн-клавиатуры для возврата")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
+        ]
+    )
+    return keyboard
+
+
 class Registration(StatesGroup):
     """Состояния для процесса регистрации."""
 
@@ -70,6 +96,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     Проверяет регистрацию пользователя и предлагает начать регистрацию, если она не завершена.
     """
     logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+    await state.clear()
     if not message.from_user:
         logger.warning("Не удалось определить пользователя для команды /start")
         await message.answer("Не удалось определить пользователя.")
@@ -91,7 +118,11 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         logger.debug(
             f"Пользователь {message.from_user.id} уже полностью зарегистрирован: {full_name}"
         )
-        await message.answer(f"Добро пожаловать, {full_name}!")
+        await message.answer(
+            f"Добро пожаловать, {full_name}!",
+            reply_markup=create_user_keyboard(),
+            parse_mode="HTML",
+        )
     else:
         logger.debug(f"Пользователь {message.from_user.id} не завершил регистрацию")
         await message.answer(
@@ -218,24 +249,29 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
             username=message.from_user.username,
             reg_date=datetime.now(MOSCOW_TZ),
         )
-        # agreement_status = "Вы согласились с правилами коворкинга."
-        # await message.answer("Регистрация завершена!\n\n" + agreement_status)
-
-        user_message = "💼 <b>PARTA</b> для вашего удобства!<u>\n\n"
-        "🛜 Сеть WiFi: <b>Parta</b> Пароль:</u> <code>Parta2024</code>)\n\n"
-        "- 🛠 <b>HelpDesk - оставьте заявку</b> на устранение любой проблемы или просьбы. Также вы сможете <b>следить за статусом своих заявок</b> в истории.\n"
-        "- 🖥 <b>Бронирование рабочего места</b> в опенспейсе на выбранную дату с <b>оплатой прямо в боте</b>.\n"
-        "- 📅 <b>Запрос на бронь переговорной</b> для встреч и переговоров.\n"
-        "- 👥 <b>Заявка на приглашение гостя</b> или клиента в ваш офис.\n\n"
-        "🔔 <b>Подпишитесь на наш новостной канал</b>, чтобы всегда быть в курсе последних обновлений и акций: <a href='https://t.me/partacowo'>Наш канал</a>"
-        await message.answer(user_message)
+        # GROUP_ID = -1002444417785
+        # invite_link = await message.bot.create_chat_invite_link(
+        #     chat_id=GROUP_ID,
+        #     name="Вступить в группу",
+        #     member_limit=1,
+        # )
+        registration_success = "===✨Вы успешно прошли регистрацию!✨===\n\n"
+        registration_info = (
+            "💼 <b>PARTA</b> для вашего удобства!<u>\n\n"
+            "🛜 Сеть WiFi: <b>Parta</b> Пароль:</u> <code>Parta2024</code>\n\n"
+            # f"🔔 <b>Вступайте в нашу группу</b>: <a href='{invite_link}'>PARTA COMMUNITY</a>"
+            "🔔 <b>А также подпишитесь на наш новостной канал</b>, чтобы всегда быть в курсе последних обновлений и акций: https://t.me/partacowo"
+        )
+        success_msg = registration_success + registration_info
+        await message.answer(
+            success_msg, reply_markup=create_user_keyboard(), parse_mode="HTML"
+        )
         logger.info(f"Пользователь {message.from_user.id} успешно зарегистрирован")
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:
                 notification = (
-                    "<b>👤 Новый резидент ✅ ✅</b>\n"
-                    "<b>📋 Данные пользователя:</b>\n\n"
+                    "<b>===👤 Новый резидент ✅ ===</b>\n\n"
                     f"Фамилия: <code>{last_name}</code>\n"
                     f"Имя: <code>{first_name}</code>\n"
                     f"Отчество: <code>{middle_name}</code>\n"
@@ -258,6 +294,34 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         await state.clear()
 
 
-def register_handlers(dp: Dispatcher) -> None:
+@router.callback_query(F.data == "info")
+async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
+    info_message = (
+        "💼 <b>PARTA</b> для вашего удобства!<u>\n\n"
+        "🛜 Сеть WiFi: <b>Parta</b> Пароль:</u> <code>Parta2024</code>)\n\n"
+        # "- 🛠 <b>HelpDesk - оставьте заявку</b> на устранение любой проблемы или просьбы.\n"
+        # "- 🖥 <b>Бронирование рабочего места</b> в опенспейсе на выбранную дату с <b>оплатой прямо в боте</b>.\n"
+        # "- 📅 <b>Запрос на бронь переговорной</b> для встреч и переговоров.\n"
+        # "- 👥 <b>Заявка на приглашение гостя</b> или клиента в ваш офис.\n\n"
+        "🔔 <b>Подпишитесь на наш новостной канал</b>, чтобы всегда быть в курсе последних обновлений и акций: <a href='https://t.me/partacowo'>Наш канал</a>"
+    )
+    await callback_query.message.answer(
+        info_message, reply_markup=create_back_keyboard(), parse_mode="HTML"
+    )
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "main_menu")
+async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback_query.message.answer(
+        f"Выберите действие:",
+        reply_markup=create_user_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
+
+
+def register_reg_handlers(dp: Dispatcher) -> None:
     """Регистрация обработчиков."""
     dp.include_router(router)
