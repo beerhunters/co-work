@@ -92,13 +92,20 @@ def init_routes(app: Flask) -> None:
     @app.route("/users")
     @login_required
     def users():
-        """Отображение списка пользователей, отсортированных по дате регистрации."""
-        users = db.session.query(User).order_by(User.reg_date.desc()).all()
+        """Отображение списка пользователей с пагинацией."""
+        page = request.args.get("page", 1, type=int)
+        per_page = 10  # Количество записей на странице
+        users_pagination = (
+            db.session.query(User)
+            .order_by(User.reg_date.desc())
+            .paginate(page=page, per_page=per_page, error_out=False)
+        )
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
             "users.html",
-            users=users,
+            users=users_pagination.items,
+            pagination=users_pagination,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
