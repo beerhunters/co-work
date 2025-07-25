@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{% if edit %}Редактирование бронирования{% else %}Данные бронирования{% endif %}{% endblock %}
+{% block content_title %}{% if edit %}Редактирование бронирования{% else %}Данные бронирования{% endif %}{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Информация о бронировании</h3>
+    </div>
+    <div class="card-body">
+        {% if edit %}
+        <form method="POST" action="{{ url_for('edit_booking', booking_id=booking.id) }}">
+        {% else %}
+        <div>
+        {% endif %}
+            <div class="form-group">
+                <label>Пользователь</label>
+                <p>{{ user.full_name or 'Не указано' }}</p>
+            </div>
+            <div class="form-group">
+                <label>Тариф</label>
+                <p>{{ tariff.name }}</p>
+            </div>
+            <div class="form-group">
+                <label>Дата визита</label>
+                {% if edit %}
+                <input type="date" class="form-control" name="visit_date" value="{{ booking.visit_date.strftime('%Y-%m-%d') }}" required>
+                {% else %}
+                <p>{{ booking.visit_date.strftime('%Y-%m-%d') }}</p>
+                {% endif %}
+            </div>
+            {% if tariff.purpose == 'Переговорная' %}
+            <div class="form-group">
+                <label>Время визита</label>
+                {% if edit %}
+                <input type="time" class="form-control" name="visit_time" value="{{ booking.visit_time.strftime('%H:%M') if booking.visit_time else '' }}" required>
+                {% else %}
+                <p>{{ booking.visit_time.strftime('%H:%M') if booking.visit_time else 'Не указано' }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Продолжительность (часы)</label>
+                {% if edit %}
+                <input type="number" class="form-control" name="duration" value="{{ booking.duration or '' }}" required min="1">
+                {% else %}
+                <p>{{ booking.duration or 'Не указано' }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            <div class="form-group">
+                <label>Сумма (₽)</label>
+                {% if edit %}
+                <input type="number" step="0.01" class="form-control" name="amount" value="{{ booking.amount }}" required min="0">
+                {% else %}
+                <p>{{ booking.amount }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Оплачено</label>
+                {% if edit %}
+                <input type="checkbox" name="paid" {% if booking.paid %}checked{% endif %}>
+                {% else %}
+                <p>{{ '✅' if booking.paid else '❌' }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Подтверждено</label>
+                <p>{{ '✅' if booking.confirmed else '❌' }}</p>
+            </div>
+            <div class="form-group">
+                {% if edit %}
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Сохранить
+                </button>
+                <a href="{{ url_for('bookings') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Назад
+                </a>
+                {% else %}
+                {% if tariff.purpose == 'Переговорная' and not booking.confirmed %}
+                <form action="{{ url_for('confirm_booking', booking_id=booking.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Подтвердить
+                    </button>
+                </form>
+                {% endif %}
+                <a href="{{ url_for('edit_booking', booking_id=booking.id) }}" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Редактировать
+                </a>
+                <form action="{{ url_for('delete_booking', booking_id=booking.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить бронирование?')">
+                        <i class="fas fa-trash"></i> Удалить
+                    </button>
+                </form>
+                <a href="{{ url_for('bookings') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Назад
+                </a>
+                {% endif %}
+            </div>
+        {% if edit %}
+        </form>
+        {% else %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

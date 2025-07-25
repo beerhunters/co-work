@@ -118,6 +118,7 @@ class Notification(Base):
         DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
     )
     is_read = Column(Integer, default=0, nullable=False)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
 
 
 def init_db() -> None:
@@ -352,6 +353,7 @@ def create_booking(
             ),
             created_at=datetime.now(MOSCOW_TZ),
             is_read=0,
+            booking_id=booking.id,  # Добавляем связь с бронированием
         )
         session.add(notification)
         session.commit()

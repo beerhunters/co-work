@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Бронирования{% endblock %}
+{% block content_title %}Бронирования{% endblock %}
+{% block content %}
+<style>
+    /* Стили для таблицы бронирований */
+    .booking-table {
+        font-size: 14px;
+    }
+    /* Стили для иконок действий */
+    .action-icon {
+        font-size: 16px;
+        margin: 0 8px;
+        cursor: pointer;
+        transition: color 0.3s ease;
+    }
+    .action-icon.view {
+        color: #17a2b8;
+    }
+    .action-icon.view:hover {
+        color: #117a8b;
+    }
+    .action-icon.edit {
+        color: #ffc107;
+    }
+    .action-icon.edit:hover {
+        color: #d39e00;
+    }
+    .action-icon.delete {
+        color: #dc3545;
+    }
+    .action-icon.delete:hover {
+        color: #b02a37;
+    }
+</style>
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Список бронирований</h3>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered table-hover booking-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Тариф</th>
+                    <th>Дата визита</th>
+                    <th>Время визита</th>
+                    <th>Продолжительность</th>
+                    <th>Сумма (₽)</th>
+                    <th>Оплачено</th>
+                    <th>Подтверждено</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for booking in bookings %}
+                <tr>
+                    <td>{{ booking.id }}</td>
+                    <td>{{ booking.user.full_name or 'Не указано' }}</td>
+                    <td>{{ booking.tariff.name }}</td>
+                    <td>{{ booking.visit_date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ booking.visit_time.strftime('%H:%M') if booking.visit_time else 'Не указано' }}</td>
+                    <td>{{ booking.duration if booking.duration else 'Не указано' }}</td>
+                    <td>{{ booking.amount }}</td>
+                    <td>{{ '✅' if booking.paid else '❌' }}</td>
+                    <td>{{ '✅' if booking.confirmed else '❌' }}</td>
+                    <td>
+                        <a href="{{ url_for('booking_detail', booking_id=booking.id) }}" class="action-icon view" title="Подробно">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{{ url_for('edit_booking', booking_id=booking.id) }}" class="action-icon edit" title="Редактировать">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <form action="{{ url_for('delete_booking', booking_id=booking.id) }}" method="POST" style="display:inline;">
+                            <a href="#" class="action-icon delete" title="Удалить" onclick="if(confirm('Вы уверены, что хотите удалить бронирование?')){this.parentNode.submit();}return false;">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10">Нет бронирований</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

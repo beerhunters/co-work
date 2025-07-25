@@ -6,15 +6,20 @@ from flask import Flask, request, render_template, redirect, url_for, flash, jso
 from flask_login import login_user, logout_user, login_required
 from sqlalchemy import desc
 from werkzeug.security import check_password_hash
+from aiogram import Bot
+import os
 
-from models.models import User, Admin, Notification, Tariff
+from models.models import User, Admin, Notification, Tariff, Booking
 from utils.logger import setup_logger
 from .app import db
 
 logger = setup_logger(__name__)
 
-# logger = logging.getLogger(__name__)
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# Инициализация бота для отправки сообщений
+bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 
 
 def init_routes(app: Flask) -> None:
@@ -291,6 +296,149 @@ def init_routes(app: Flask) -> None:
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
+
+    @app.route("/bookings")
+    @login_required
+    def bookings():
+        """Отображение списка бронирований."""
+        bookings = (
+            db.session.query(Booking)
+            .join(User, Booking.user_id == User.id)
+            .join(Tariff, Booking.tariff_id == Tariff.id)
+            .order_by(Booking.visit_date.desc())
+            .all()
+        )
+        unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
+        return render_template(
+            "bookings.html",
+            bookings=bookings,
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
+        )
+
+    @app.route("/booking/<int:booking_id>")
+    @login_required
+    def booking_detail(booking_id: int):
+        """Отображение детальной информации о бронировании."""
+        booking = db.session.get(Booking, booking_id)
+        if not booking:
+            flash("Бронирование не найдено")
+            return redirect(url_for("bookings"))
+        user = db.session.get(User, booking.user_id)
+        tariff = db.session.get(Tariff, booking.tariff_id)
+        unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
+        return render_template(
+            "booking_detail.html",
+            booking=booking,
+            user=user,
+            tariff=tariff,
+            edit=False,
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
+        )
+
+    @app.route("/booking/<int:booking_id>/edit", methods=["GET", "POST"])
+    @login_required
+    def edit_booking(booking_id: int):
+        """Редактирование бронирования."""
+        booking = db.session.get(Booking, booking_id)
+        if not booking:
+            flash("Бронирование не найдено")
+            return redirect(url_for("bookings"))
+        user = db.session.get(User, booking.user_id)
+        tariff = db.session.get(Tariff, booking.tariff_id)
+        if request.method == "POST":
+            try:
+                visit_date = request.form.get("visit_date")
+                booking.visit_date = datetime.strptime(visit_date, "%Y-%m-%d").date()
+                if tariff.purpose == "Переговорная":
+                    visit_time = request.form.get("visit_time")
+                    booking.visit_time = datetime.strptime(visit_time, "%H:%M").time()
+                    booking.duration = int(request.form.get("duration"))
+                booking.amount = float(request.form.get("amount"))
+                booking.paid = request.form.get("paid") == "on"
+                db.session.commit()
+                flash("Данные бронирования обновлены")
+                logger.info(f"Бронирование {booking_id} обновлено")
+                return redirect(url_for("booking_detail", booking_id=booking_id))
+            except Exception as e:
+                db.session.rollback()
+                flash("Ошибка при обновлении данных")
+                logger.error(f"Ошибка обновления бронирования {booking_id}: {str(e)}")
+        unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
+        return render_template(
+            "booking_detail.html",
+            booking=booking,
+            user=user,
+            tariff=tariff,
+            edit=True,
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
+        )
+
+    @app.route("/booking/<int:booking_id>/delete", methods=["POST"])
+    @login_required
+    def delete_booking(booking_id: int):
+        """Удаление бронирования."""
+        booking = db.session.get(Booking, booking_id)
+        if not booking:
+            flash("Бронирование не найдено")
+            return redirect(url_for("bookings"))
+        try:
+            db.session.delete(booking)
+            db.session.commit()
+            flash("Бронирование удалено")
+            logger.info(f"Бронирование {booking_id} удалено")
+        except Exception as e:
+            db.session.rollback()
+            flash("Ошибка при удалении бронирования")
+            logger.error(f"Ошибка удаления бронирования {booking_id}: {str(e)}")
+        return redirect(url_for("bookings"))
+
+    @app.route("/booking/<int:booking_id>/confirm", methods=["POST"])
+    @login_required
+    async def confirm_booking(booking_id: int):
+        """Подтверждение бронирования для 'Переговорной'."""
+        booking = db.session.get(Booking, booking_id)
+        if not booking:
+            flash("Бронирование не найдено")
+            return redirect(url_for("bookings"))
+        if booking.confirmed:
+            flash("Бронирование уже подтверждено")
+            return redirect(url_for("booking_detail", booking_id=booking_id))
+        try:
+            booking.confirmed = True
+            db.session.commit()
+            # Отправка сообщения пользователю через Telegram
+            if bot:
+                user = db.session.get(User, booking.user_id)
+                tariff = db.session.get(Tariff, booking.tariff_id)
+                message = (
+                    f"Ваша бронь подтверждена!\n"
+                    f"Тариф: {tariff.name}\n"
+                    f"Дата: {booking.visit_date}\n"
+                    f"Время: {booking.visit_time}\n"
+                    f"Продолжительность: {booking.duration} ч"
+                )
+                try:
+                    await bot.send_message(user.telegram_id, message)
+                    logger.info(
+                        f"Сообщение о подтверждении брони {booking_id} отправлено пользователю {user.telegram_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка отправки сообщения пользователю {user.telegram_id}: {str(e)}"
+                    )
+            flash("Бронирование подтверждено")
+            logger.info(f"Бронирование {booking_id} подтверждено")
+        except Exception as e:
+            db.session.rollback()
+            flash("Ошибка при подтверждении бронирования")
+            logger.error(f"Ошибка подтверждения бронирования {booking_id}: {str(e)}")
+        return redirect(url_for("booking_detail", booking_id=booking_id))
 
     @app.route("/notifications")
     @login_required
