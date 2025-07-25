@@ -312,6 +312,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="{{ url_for('tariffs') }}" class="nav-link {% if request.endpoint == 'tariffs' %}active{% endif %}">
+                            <i class="nav-icon fas fa-dollar-sign"></i>
+                            <p>Тарифы</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="{{ url_for('notifications') }}" class="nav-link {% if request.endpoint == 'notifications' %}active{% endif %}">
                             <i class="nav-icon far fa-bell"></i>
                             <p>Уведомления</p>

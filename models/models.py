@@ -1,5 +1,5 @@
 from sqlite3 import IntegrityError
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from sqlalchemy import (
     create_engine,
     Column,
@@ -10,18 +10,19 @@ from sqlalchemy import (
     text,
     Boolean,
     Float,
+    ForeignKey,
+    Date,
+    Time,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
 from datetime import datetime
 import pytz
-import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# logger = logging.getLogger(__name__)
 Base = declarative_base()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
@@ -62,6 +63,24 @@ class Tariff(Base):
     purpose = Column(String(50), nullable=True)
     service_id = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
+
+
+class Booking(Base):
+    """Модель бронирования."""
+
+    __tablename__ = "bookings"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=False)
+    visit_date = Column(Date, nullable=False)
+    visit_time = Column(Time, nullable=True)
+    duration = Column(Integer, nullable=True)
+    promocode = Column(String(50), nullable=True)
+    amount = Column(Float, nullable=False)
+    payment_id = Column(String(100), nullable=True)
+    paid = Column(Boolean, default=False)
+    rubitime_id = Column(String(100), nullable=True)
+    confirmed = Column(Boolean, default=False)
 
 
 class Admin(Base):
@@ -255,3 +274,112 @@ def add_user(
         raise
     finally:
         session.close()
+
+
+def get_active_tariffs() -> List[Tariff]:
+    """
+    Возвращает список активных тарифов из базы данных.
+
+    Returns:
+        List[Tariff]: Список активных тарифов.
+    """
+    session = Session()
+    try:
+        tariffs = session.query(Tariff).filter_by(is_active=True).all()
+        logger.info(f"Получено {len(tariffs)} активных тарифов")
+        return tariffs
+    except Exception as e:
+        logger.error(f"Ошибка при получении активных тарифов: {str(e)}")
+        raise
+    finally:
+        session.close()
+
+
+def create_booking(
+    telegram_id: int,
+    tariff_id: int,
+    visit_date: datetime.date,
+    visit_time: Optional[datetime.time] = None,
+    duration: Optional[int] = None,
+) -> Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]:
+    """
+    Создаёт запись бронирования и уведомление в базе данных.
+
+    Args:
+        telegram_id: Telegram ID пользователя.
+        tariff_id: ID тарифа.
+        visit_date: Дата визита.
+        visit_time: Время визита (для 'Переговорной').
+        duration: Продолжительность в часах (для 'Переговорной').
+
+    Returns:
+        Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]: Созданная бронь, сообщение для администратора и сессия или None, сообщение об ошибке и None.
+    """
+    session = Session()
+    try:
+        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        if not user:
+            logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
+            session.close()
+            return None, "Пользователь не найден", None
+
+        tariff = session.query(Tariff).filter_by(id=tariff_id, is_active=True).first()
+        if not tariff:
+            logger.warning(f"Тариф с ID {tariff_id} не найден или не активен")
+            session.close()
+            return None, "Тариф не найден", None
+
+        booking = Booking(
+            user_id=user.id,
+            tariff_id=tariff.id,
+            visit_date=visit_date,
+            visit_time=visit_time,
+            duration=duration,
+            amount=tariff.price,
+            paid=False,
+            confirmed=False if tariff.purpose == "Переговорная" else True,
+        )
+        session.add(booking)
+        session.flush()  # Получаем booking.id
+
+        notification = Notification(
+            user_id=user.id,
+            message=f"Новая бронь от {user.full_name or 'пользователя'}: тариф {tariff.name}, дата {visit_date}"
+            + (
+                f", время {visit_time}, длительность {duration} ч"
+                if tariff.purpose == "Переговорная"
+                else ""
+            ),
+            created_at=datetime.now(MOSCOW_TZ),
+            is_read=0,
+        )
+        session.add(notification)
+        session.commit()
+
+        admin_message = (
+            f"Новая бронь!\n"
+            f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
+            f"Тариф: {tariff.name} ({tariff.price} ₽)\n"
+            f"Дата: {visit_date}"
+            + (
+                f"\nВремя: {visit_time}\nПродолжительность: {duration} ч"
+                if tariff.purpose == "Переговорная"
+                else ""
+            )
+        )
+        logger.info(
+            f"Бронь создана: пользователь {telegram_id}, тариф {tariff.name}, дата {visit_date}, ID брони {booking.id}"
+        )
+        return booking, admin_message, session
+    except IntegrityError as e:
+        session.rollback()
+        logger.error(
+            f"Ошибка уникальности при создании брони для пользователя {telegram_id}: {str(e)}"
+        )
+        session.close()
+        return None, "Ошибка при создании брони", None
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Ошибка создания брони для пользователя {telegram_id}: {str(e)}")
+        session.close()
+        return None, "Ошибка при создании брони", None

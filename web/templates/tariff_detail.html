@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{% if edit or new %}Редактирование тарифа{% else %}Данные тарифа{% endif %}{% endblock %}
+{% block content_title %}{% if edit or new %}Редактирование тарифа{% else %}Данные тарифа{% endif %}{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% if new %}Новый тариф{% else %}Информация о тарифе{% endif %}</h3>
+    </div>
+    <div class="card-body">
+        {% if edit or new %}
+        <form method="POST" action="{% if new %}{{ url_for('new_tariff') }}{% else %}{{ url_for('edit_tariff', tariff_id=tariff.id) }}{% endif %}">
+        {% else %}
+        <div>
+        {% endif %}
+            <div class="form-group">
+                <label>Название</label>
+                {% if edit or new %}
+                <input type="text" class="form-control" name="name" value="{{ tariff.name or '' }}" required maxlength="64">
+                {% else %}
+                <p>{{ tariff.name }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Описание</label>
+                {% if edit or new %}
+                <textarea class="form-control" name="description" required maxlength="255">{{ tariff.description or 'Описание тарифа' }}</textarea>
+                {% else %}
+                <p>{{ tariff.description }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Цена (₽)</label>
+                {% if edit or new %}
+                <input type="number" step="0.01" class="form-control" name="price" value="{{ tariff.price or '' }}" required min="0">
+                {% else %}
+                <p>{{ tariff.price }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Назначение</label>
+                {% if edit or new %}
+                <input type="text" class="form-control" name="purpose" value="{{ tariff.purpose or '' }}" maxlength="50">
+                {% else %}
+                <p>{{ tariff.purpose or 'Не указано' }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Service ID</label>
+                {% if edit or new %}
+                <input type="number" class="form-control" name="service_id" value="{{ tariff.service_id or '' }}">
+                {% else %}
+                <p>{{ tariff.service_id or 'Не указано' }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Активен</label>
+                {% if edit or new %}
+                <input type="checkbox" name="is_active" {% if tariff.is_active %}checked{% endif %}>
+                {% else %}
+                <p>{{ '✅' if tariff.is_active else '❌' }}</p>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {% if edit or new %}
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Сохранить
+                </button>
+                <a href="{{ url_for('tariffs') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Назад
+                </a>
+                {% else %}
+                <a href="{{ url_for('edit_tariff', tariff_id=tariff.id) }}" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Редактировать
+                </a>
+                <form action="{{ url_for('delete_tariff', tariff_id=tariff.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить тариф?')">
+                        <i class="fas fa-trash"></i> Удалить
+                    </button>
+                </form>
+                <a href="{{ url_for('tariffs') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Назад
+                </a>
+                {% endif %}
+            </div>
+        {% if edit or new %}
+        </form>
+        {% else %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
