@@ -301,13 +301,7 @@ def init_routes(app: Flask) -> None:
     @login_required
     def bookings():
         """Отображение списка бронирований."""
-        bookings = (
-            db.session.query(Booking)
-            .join(User, Booking.user_id == User.id)
-            .join(Tariff, Booking.tariff_id == Tariff.id)
-            .order_by(Booking.visit_date.desc())
-            .all()
-        )
+        bookings = db.session.query(Booking).order_by(Booking.visit_date.desc()).all()
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
@@ -325,15 +319,13 @@ def init_routes(app: Flask) -> None:
         if not booking:
             flash("Бронирование не найдено")
             return redirect(url_for("bookings"))
-        user = db.session.get(User, booking.user_id)
-        tariff = db.session.get(Tariff, booking.tariff_id)
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
             "booking_detail.html",
             booking=booking,
-            user=user,
-            tariff=tariff,
+            user=booking.user,
+            tariff=booking.tariff,
             edit=False,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
@@ -347,13 +339,11 @@ def init_routes(app: Flask) -> None:
         if not booking:
             flash("Бронирование не найдено")
             return redirect(url_for("bookings"))
-        user = db.session.get(User, booking.user_id)
-        tariff = db.session.get(Tariff, booking.tariff_id)
         if request.method == "POST":
             try:
                 visit_date = request.form.get("visit_date")
                 booking.visit_date = datetime.strptime(visit_date, "%Y-%m-%d").date()
-                if tariff.purpose == "Переговорная":
+                if booking.tariff.purpose == "Переговорная":
                     visit_time = request.form.get("visit_time")
                     booking.visit_time = datetime.strptime(visit_time, "%H:%M").time()
                     booking.duration = int(request.form.get("duration"))
@@ -372,8 +362,8 @@ def init_routes(app: Flask) -> None:
         return render_template(
             "booking_detail.html",
             booking=booking,
-            user=user,
-            tariff=tariff,
+            user=booking.user,
+            tariff=booking.tariff,
             edit=True,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,

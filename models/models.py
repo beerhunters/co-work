@@ -15,7 +15,7 @@ from sqlalchemy import (
     Time,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
+from sqlalchemy.orm import sessionmaker, relationship, Session as SQLAlchemySession
 from datetime import datetime
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -81,6 +81,9 @@ class Booking(Base):
     paid = Column(Boolean, default=False)
     rubitime_id = Column(String(100), nullable=True)
     confirmed = Column(Boolean, default=False)
+
+    user = relationship("User", backref="bookings")  # Связь с моделью User
+    tariff = relationship("Tariff", backref="bookings")  # Связь с моделью Tariff
 
 
 class Admin(Base):
