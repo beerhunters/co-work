@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     text,
     Boolean,
+    Float,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -48,6 +49,19 @@ class User(Base):
     language_code = Column(String, default="ru")
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
+
+
+class Tariff(Base):
+    """Модель тарифа."""
+
+    __tablename__ = "tariffs"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False, index=True)
+    description = Column(String(255), default="Описание тарифа", nullable=False)
+    price = Column(Float, nullable=False)
+    purpose = Column(String(50), nullable=True)
+    service_id = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
 
 
 class Admin(Base):

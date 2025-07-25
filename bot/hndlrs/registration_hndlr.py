@@ -22,6 +22,14 @@ router = Router()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
+# btn_back = ⬅️ Назад
+# helpdesk_button = 🛠️ Helpdesk
+# register_guest_button = 👥 Регистрация гостя
+# print_button = 🖨️ Печать(pdf, doc, docx)
+# quiz_button = 🧠 Квиз
+# rules_button = 📄 Общие правила
+# contact_admin_button = 📞 Связаться с Администратором
+
 
 def create_register_keyboard() -> InlineKeyboardMarkup:
     """
@@ -60,7 +68,8 @@ def create_user_keyboard() -> InlineKeyboardMarkup:
     logger.debug("Создание инлайн-клавиатуры для пользователя")
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Информация", callback_data="info")]
+            [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
+            [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
         ]
     )
     return keyboard
@@ -73,7 +82,7 @@ def create_back_keyboard() -> InlineKeyboardMarkup:
     logger.debug("Создание инлайн-клавиатуры для возврата")
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
         ]
     )
     return keyboard
@@ -296,6 +305,7 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
 
 @router.callback_query(F.data == "info")
 async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
+    await callback_query.message.delete()
     info_message = (
         "💼 <b>PARTA</b> для вашего удобства!<u>\n\n"
         "🛜 Сеть WiFi: <b>Parta</b> Пароль:</u> <code>Parta2024</code>)\n\n"
@@ -314,6 +324,7 @@ async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "main_menu")
 async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
+    await callback_query.message.delete()
     await callback_query.message.answer(
         f"Выберите действие:",
         reply_markup=create_user_keyboard(),
