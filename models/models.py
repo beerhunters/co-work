@@ -33,15 +33,6 @@ engine = create_engine(
 Session = sessionmaker(bind=engine)
 
 
-def init_db() -> None:
-    """Инициализация базы данных с WAL-режимом."""
-    with engine.connect() as connection:
-        connection.execute(text("PRAGMA journal_mode=WAL"))
-        logger.info("WAL-режим успешно включён")
-        Base.metadata.create_all(engine)
-        logger.info("Таблицы базы данных созданы")
-
-
 class Admin(Base):
     """Модель администратора."""
 
@@ -120,7 +111,7 @@ class Booking(Base):
     visit_date = Column(Date, nullable=False)
     visit_time = Column(Time, nullable=True)
     duration = Column(Integer, nullable=True)
-    promocode = Column(String(50), nullable=True)
+    promocode_id = Column(Integer, ForeignKey("promocodes.id"), nullable=True)
     amount = Column(Float, nullable=False)
     payment_id = Column(String(100), nullable=True)
     paid = Column(Boolean, default=False)
@@ -129,6 +120,9 @@ class Booking(Base):
 
     user = relationship("User", backref="bookings")  # Связь с моделью User
     tariff = relationship("Tariff", backref="bookings")  # Связь с моделью Tariff
+    promocode = relationship(
+        "Promocode", backref="promocodes"
+    )  # Связь с моделью Promocode
 
 
 class Notification(Base):
@@ -147,6 +141,15 @@ class Notification(Base):
     # Добавляем связи для удобства
     user = relationship("User", backref="notifications")
     booking = relationship("Booking", backref="notifications")
+
+
+def init_db() -> None:
+    """Инициализация базы данных с WAL-режимом."""
+    with engine.connect() as connection:
+        connection.execute(text("PRAGMA journal_mode=WAL"))
+        logger.info("WAL-режим успешно включён")
+        Base.metadata.create_all(engine)
+        logger.info("Таблицы базы данных созданы")
 
 
 def create_admin(admin_login: str, admin_password: str) -> None:
