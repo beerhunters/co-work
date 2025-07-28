@@ -310,17 +310,23 @@ def create_booking(
     visit_date: datetime.date,
     visit_time: Optional[datetime.time] = None,
     duration: Optional[int] = None,
+    amount: Optional[float] = None,
+    paid: Optional[bool] = False,
+    confirmed: Optional[bool] = False,
+    payment_id: Optional[str] = None,
 ) -> Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]:
     """
     Создаёт запись бронирования и уведомление в базе данных.
-
     Args:
         telegram_id: Telegram ID пользователя.
         tariff_id: ID тарифа.
         visit_date: Дата визита.
         visit_time: Время визита (для 'Переговорной').
         duration: Продолжительность в часах (для 'Переговорной').
-
+        amount: Сумма бронирования.
+        paid: Флаг оплаты.
+        confirmed: Флаг подтверждения.
+        payment_id: ID платежа в YooKassa.
     Returns:
         Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]: Созданная бронь, сообщение для администратора и сессия или None, сообщение об ошибке и None.
     """
@@ -344,12 +350,13 @@ def create_booking(
             visit_date=visit_date,
             visit_time=visit_time,
             duration=duration,
-            amount=tariff.price,
-            paid=False,
-            confirmed=False if tariff.purpose == "Переговорная" else True,
+            amount=amount or tariff.price,
+            paid=paid,
+            confirmed=confirmed,
+            payment_id=payment_id,
         )
         session.add(booking)
-        session.flush()  # Получаем booking.id
+        session.flush()
 
         notification = Notification(
             user_id=user.id,
@@ -361,7 +368,7 @@ def create_booking(
             ),
             created_at=datetime.now(MOSCOW_TZ),
             is_read=0,
-            booking_id=booking.id,  # Добавляем связь с бронированием
+            booking_id=booking.id,
         )
         session.add(notification)
         session.commit()
