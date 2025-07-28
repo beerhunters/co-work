@@ -2,12 +2,47 @@
 {% block title %}Пользователи{% endblock %}
 {% block content_title %}Пользователи{% endblock %}
 {% block content %}
+<style>
+    /* Стили для таблицы бронирований */
+    .table-hover {
+        font-size: 14px;
+    }
+    /* Стили для иконок действий */
+    .action-icon {
+        font-size: 16px;
+        margin: 0 8px;
+        cursor: pointer;
+        transition: color 0.3s ease;
+    }
+    .action-icon.view {
+    color: #17a2b8;
+    }
+    .action-icon.view:hover {
+        color: #117a8b;
+    }
+    .action-icon.edit {
+        color: #ffc107;
+    }
+    .action-icon.edit:hover {
+        color: #d39e00;
+    }
+    .action-icon.delete {
+        color: #dc3545;
+    }
+    .action-icon.delete:hover {
+        color: #b02a37;
+    }
+</style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Список пользователей</h3>
+        <!-- Поле поиска -->
+        <div class="input-group mt-3" style="max-width: 300px;">
+            <input type="text" id="searchInput" class="form-control" placeholder="Поиск по ФИО или телефону">
+        </div>
     </div>
     <div class="card-body">
-        <table class="table table-bordered table-hover">
+        <table class="table table-bordered table-hover" id="usersTable">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -29,10 +64,16 @@
                     <td>{{ user.email or 'Не указано' }}</td>
                     <td>{{ user.reg_date.strftime('%Y-%m-%d %H:%M') if user.reg_date else 'Не указано' }}</td>
                     <td>
-                        <a href="{{ url_for('user_detail', user_id=user.id) }}" class="btn btn-sm btn-info">Подробно</a>
-                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning">Редактировать</a>
+                        <a href="{{ url_for('user_detail', user_id=user.id) }}" class="action-icon view">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="action-icon edit">
+                            <i class="fas fa-edit"></i>
+                        </a>
                         <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;">
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Вы уверены, что хотите удалить пользователя?');">Удалить</button>
+                            <a href="#" class="action-icon delete" title="Удалить" onclick="if(confirm('Вы уверены, что хотите удалить пользователя?')){this.parentNode.submit();}return false;">
+                                <i class="fas fa-trash"></i>
+                            </a>
                         </form>
                     </td>
                 </tr>
@@ -69,4 +110,27 @@
         </nav>
     </div>
 </div>
+
+<!-- JavaScript для фильтрации таблицы -->
+<script>
+document.getElementById('searchInput').addEventListener('input', function() {
+    const searchValue = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#usersTable tbody tr');
+
+    rows.forEach(row => {
+        // Проверяем, не является ли строка сообщением "Нет зарегистрированных пользователей"
+        if (row.cells.length === 1) return;
+
+        const fullName = row.cells[2].textContent.toLowerCase();
+        const phone = row.cells[3].textContent.toLowerCase();
+
+        // Показываем строку, если поисковый запрос содержится в ФИО или телефоне
+        if (fullName.includes(searchValue) || phone.includes(searchValue)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+</script>
 {% endblock %}
