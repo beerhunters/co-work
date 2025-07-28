@@ -181,6 +181,13 @@ def create_admin(admin_login: str, admin_password: str) -> None:
         session.close()
 
 
+def get_user_by_telegram_id(telegram_id) -> Optional[User]:
+    session = Session()
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    session.close()
+    return user
+
+
 def check_and_add_user(
     telegram_id: int, username: Optional[str] = None
 ) -> Tuple[Optional[User], bool]:

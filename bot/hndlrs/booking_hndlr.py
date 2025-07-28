@@ -17,7 +17,12 @@ from typing import Optional
 import re
 
 from bot.config import create_payment, rubitime, check_payment_status
-from models.models import get_active_tariffs, create_booking, User
+from models.models import (
+    get_active_tariffs,
+    create_booking,
+    User,
+    get_user_by_telegram_id,
+)
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -71,23 +76,31 @@ def create_back_keyboard() -> InlineKeyboardMarkup:
     return keyboard
 
 
-def create_tariff_keyboard() -> InlineKeyboardMarkup:
+def create_tariff_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """
-    Создаёт инлайн-клавиатуру с активными тарифами.
+    Создаёт инлайн-клавиатуру с активными тарифами, исключая 'Тестовый день' для пользователей с успешными бронированиями.
+    Args:
+        telegram_id: Telegram ID пользователя.
     Returns:
         InlineKeyboardMarkup: Клавиатура с тарифами и кнопкой отмены.
     """
     try:
+        user = get_user_by_telegram_id(telegram_id)
+        successful_bookings = user.successful_bookings
         tariffs = get_active_tariffs()
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text=f"{tariff.name} ({tariff.price} {'₽/ч' if tariff.purpose == 'Переговорная' else '₽'})",
-                    callback_data=f"tariff_{tariff.id}",
-                )
-            ]
-            for tariff in tariffs
-        ]
+        buttons = []
+        for tariff in tariffs:
+            # Пропускаем тариф 'Тестовый день', если у пользователя есть успешные бронирования
+            if tariff.service_id == 47890 and successful_bookings > 0:
+                continue
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"{tariff.name} ({tariff.price} {'₽/ч' if tariff.purpose == 'Переговорная' else '₽'})",
+                        callback_data=f"tariff_{tariff.id}",
+                    )
+                ]
+            )
         buttons.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         logger.debug("Создана клавиатура с тарифами")
@@ -150,7 +163,8 @@ async def start_booking(
 
     await state.set_state(Booking.SELECT_TARIFF)
     await callback_query.message.answer(
-        "Выберите тариф:", reply_markup=create_tariff_keyboard()
+        "Выберите тариф:",
+        reply_markup=create_tariff_keyboard(callback_query.from_user.id),
     )
     logger.info(
         f"Пользователь {callback_query.from_user.id} начал процесс бронирования"
@@ -215,7 +229,7 @@ async def process_tariff_selection(
     if not tariff:
         await callback_query.message.edit_text(
             text="Тариф не найден. Попробуйте снова.",
-            reply_markup=create_tariff_keyboard(),
+            reply_markup=create_tariff_keyboard(callback_query.from_user.id),
         )
         logger.warning(
             f"Пользователь {callback_query.from_user.id} выбрал несуществующий тариф: {tariff_id}"
@@ -422,6 +436,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
     )
 
     if tariff.purpose == "Переговорная":
+        await state.update_data(tariff_purpose=tariff.purpose)
         # Для "Переговорной" создаём бронь без оплаты
         await handle_free_booking(message, state, bot=message.bot, paid=False)
     elif amount == 0:
@@ -500,6 +515,7 @@ async def handle_free_booking(
     amount = data["amount"]
     promocode_name = data.get("promocode_name", "-")
     discount = data.get("discount", 0)
+    tariff_purpose = data.get("tariff_purpose", "")
 
     booking, admin_message, session = create_booking(
         telegram_id=message.from_user.id,
@@ -509,7 +525,9 @@ async def handle_free_booking(
         duration=duration,
         amount=amount,
         paid=paid,
-        confirmed=False,  # Всегда False, так как требует подтверждения
+        confirmed=(
+            False if tariff_purpose == "Переговорная" else True
+        ),  # Всегда False, так как требует подтверждения
     )
     if not booking:
         if session:
@@ -528,6 +546,14 @@ async def handle_free_booking(
         user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
         tariffs = get_active_tariffs()
         tariff = next((t for t in tariffs if t.id == tariff_id), None)
+
+        # Увеличиваем счетчик успешных бронирований для тарифов с назначением "Опенспейс"
+        if tariff.purpose == "Опенспейс":
+            user.successful_bookings += 1
+            session.commit()
+            logger.info(
+                f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} до {user.successful_bookings}"
+            )
 
         # Формируем дату и время для Rubitime
         if tariff.purpose == "Переговорная" and visit_time and duration:
@@ -653,6 +679,14 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 )
                 tariffs = get_active_tariffs()
                 tariff = next((t for t in tariffs if t.id == tariff_id), None)
+
+                # Увеличиваем счетчик успешных бронирований для тарифов с назначением "Опенспейс"
+                if tariff.purpose == "Опенспейс":
+                    user.successful_bookings += 1
+                    session.commit()
+                    logger.info(
+                        f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} до {user.successful_bookings}"
+                    )
 
                 # Формируем дату и время для Rubitime
                 if tariff.purpose == "Переговорная" and visit_time and duration:

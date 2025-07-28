@@ -161,6 +161,7 @@ def init_routes(app: Flask) -> None:
             user.phone = request.form.get("phone")
             user.email = request.form.get("email")
             user.username = request.form.get("username")
+            user.successful_bookings = request.form.get("successful_bookings")
             user.language_code = request.form.get("language_code", "ru")
             try:
                 db.session.commit()

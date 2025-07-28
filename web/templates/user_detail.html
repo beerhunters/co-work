@@ -46,7 +46,11 @@
             </div>
             <div class="form-group">
                 <label>Успешные бронирования</label>
+                {% if edit %}
+                <input type="text" class="form-control" name="successful_bookings" value="{{ user.successful_bookings or '0' }}">
+                {% else %}
                 <p>{{ user.successful_bookings }}</p>
+                {% endif %}
             </div>
             <div class="form-group">
                 <label>Код языка</label>
