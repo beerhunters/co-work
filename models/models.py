@@ -33,6 +33,39 @@ engine = create_engine(
 Session = sessionmaker(bind=engine)
 
 
+def init_db() -> None:
+    """Инициализация базы данных с WAL-режимом."""
+    with engine.connect() as connection:
+        connection.execute(text("PRAGMA journal_mode=WAL"))
+        logger.info("WAL-режим успешно включён")
+        Base.metadata.create_all(engine)
+        logger.info("Таблицы базы данных созданы")
+
+
+class Admin(Base):
+    """Модель администратора."""
+
+    __tablename__ = "admins"
+    id = Column(Integer, primary_key=True)
+    login = Column(String, unique=True, nullable=False)
+    password = Column(String, nullable=False)
+
+    @property
+    def is_active(self) -> bool:
+        return True
+
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
+    def get_id(self) -> str:
+        return str(self.id)
+
+
 class User(Base):
     """Модель пользователя."""
 
@@ -65,6 +98,18 @@ class Tariff(Base):
     is_active = Column(Boolean, default=True, index=True)
 
 
+class Promocode(Base):
+    """Модель промокода."""
+
+    __tablename__ = "promocodes"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True, index=True)
+    discount = Column(Integer, nullable=False)
+    usage_quantity = Column(Integer, default=0)
+    expiration_date = Column(DateTime(timezone=True), nullable=True, index=True)
+    is_active = Column(Boolean, default=False, index=True)
+
+
 class Booking(Base):
     """Модель бронирования."""
 
@@ -86,30 +131,6 @@ class Booking(Base):
     tariff = relationship("Tariff", backref="bookings")  # Связь с моделью Tariff
 
 
-class Admin(Base):
-    """Модель администратора."""
-
-    __tablename__ = "admins"
-    id = Column(Integer, primary_key=True)
-    login = Column(String, unique=True, nullable=False)
-    password = Column(String, nullable=False)
-
-    @property
-    def is_active(self) -> bool:
-        return True
-
-    @property
-    def is_authenticated(self) -> bool:
-        return True
-
-    @property
-    def is_anonymous(self) -> bool:
-        return False
-
-    def get_id(self) -> str:
-        return str(self.id)
-
-
 class Notification(Base):
     """Модель уведомления."""
 
@@ -126,15 +147,6 @@ class Notification(Base):
     # Добавляем связи для удобства
     user = relationship("User", backref="notifications")
     booking = relationship("Booking", backref="notifications")
-
-
-def init_db() -> None:
-    """Инициализация базы данных с WAL-режимом."""
-    with engine.connect() as connection:
-        connection.execute(text("PRAGMA journal_mode=WAL"))
-        logger.info("WAL-режим успешно включён")
-        Base.metadata.create_all(engine)
-        logger.info("Таблицы базы данных созданы")
 
 
 def create_admin(admin_login: str, admin_password: str) -> None:
