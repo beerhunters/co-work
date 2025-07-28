@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 from typing import Optional, Tuple
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 import aiohttp
 import pytz
@@ -22,6 +23,41 @@ Configuration.secret_key = os.getenv("YOKASSA_SECRET_KEY")
 RUBITIME_API_KEY = os.getenv("RUBITIME_API_KEY")
 RUBITIME_BASE_URL = "https://rubitime.ru/api2/"
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+
+# btn_back = ⬅️ Назад
+# helpdesk_button = 🛠️ Helpdesk
+# register_guest_button = 👥 Регистрация гостя
+# print_button = 🖨️ Печать(pdf, doc, docx)
+# quiz_button = 🧠 Квиз
+# rules_button = 📄 Общие правила
+# contact_admin_button = 📞 Связаться с Администратором
+
+
+def create_user_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для начала регистрации.
+    """
+    logger.debug("Создание инлайн-клавиатуры для пользователя")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
+            [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
+        ]
+    )
+    return keyboard
+
+
+def create_back_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для начала регистрации.
+    """
+    logger.debug("Создание инлайн-клавиатуры для возврата")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+    )
+    return keyboard
 
 
 async def rubitime(method: str, extra_params: dict) -> Optional[str]:

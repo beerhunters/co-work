@@ -11,6 +11,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
+from bot.config import create_user_keyboard, create_back_keyboard
 from models.models import add_user, check_and_add_user
 from utils.logger import setup_logger
 
@@ -21,14 +22,6 @@ load_dotenv()
 router = Router()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
-
-# btn_back = ⬅️ Назад
-# helpdesk_button = 🛠️ Helpdesk
-# register_guest_button = 👥 Регистрация гостя
-# print_button = 🖨️ Печать(pdf, doc, docx)
-# quiz_button = 🧠 Квиз
-# rules_button = 📄 Общие правила
-# contact_admin_button = 📞 Связаться с Администратором
 
 
 def create_register_keyboard() -> InlineKeyboardMarkup:
@@ -56,33 +49,6 @@ def create_agreement_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Согласен", callback_data="agree_to_terms")]
-        ]
-    )
-    return keyboard
-
-
-def create_user_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создаёт инлайн-клавиатуру для начала регистрации.
-    """
-    logger.debug("Создание инлайн-клавиатуры для пользователя")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
-            [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
-        ]
-    )
-    return keyboard
-
-
-def create_back_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создаёт инлайн-клавиатуру для начала регистрации.
-    """
-    logger.debug("Создание инлайн-клавиатуры для возврата")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
         ]
     )
     return keyboard

@@ -16,7 +16,12 @@ import asyncio
 from typing import Optional
 import re
 
-from bot.config import create_payment, rubitime, check_payment_status
+from bot.config import (
+    create_payment,
+    rubitime,
+    check_payment_status,
+    create_user_keyboard, create_back_keyboard,
+)
 from models.models import (
     get_active_tariffs,
     create_booking,
@@ -43,37 +48,6 @@ class Booking(StatesGroup):
     ENTER_PROMOCODE = State()
     PAYMENT = State()
     STATUS_PAYMENT = State()
-
-
-def create_user_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создаёт инлайн-клавиатуру для главного меню.
-    Returns:
-        InlineKeyboardMarkup: Клавиатура с кнопками для пользователя.
-    """
-    logger.debug("Создание инлайн-клавиатуры для пользователя")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
-            [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
-        ]
-    )
-    return keyboard
-
-
-def create_back_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создаёт инлайн-клавиатуру для возврата в главное меню.
-    Returns:
-        InlineKeyboardMarkup: Клавиатура с кнопкой возврата.
-    """
-    logger.debug("Создание инлайн-клавиатуры для возврата")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-        ]
-    )
-    return keyboard
 
 
 def create_tariff_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
