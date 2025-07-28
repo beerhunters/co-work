@@ -1,8 +1,5 @@
-import asyncio
 import os
-import re
 from datetime import datetime
-
 import pytz
 from aiogram import Router, Bot, Dispatcher, F
 from aiogram.fsm.context import FSMContext
@@ -15,6 +12,9 @@ from aiogram.types import (
 )
 from dotenv import load_dotenv
 from yookassa import Payment, Refund
+import asyncio
+from typing import Optional
+import re
 
 from bot.config import create_payment, rubitime, check_payment_status
 from models.models import get_active_tariffs, create_booking, User
@@ -82,7 +82,7 @@ def create_tariff_keyboard() -> InlineKeyboardMarkup:
         buttons = [
             [
                 InlineKeyboardButton(
-                    text=f"{tariff.name} ({tariff.price} ₽)",
+                    text=f"{tariff.name} ({tariff.price} {'₽/ч' if tariff.purpose == 'Переговорная' else '₽'})",
                     callback_data=f"tariff_{tariff.id}",
                 )
             ]
@@ -398,9 +398,21 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
     else:
         logger.info(f"Пользователь {message.from_user.id} пропустил промокод")
 
-    amount = tariff.price * (1 - discount / 100)
+    # Рассчитываем стоимость с учетом продолжительности для "Переговорной"
+    duration = data.get("duration")
+    if tariff.purpose == "Переговорная" and duration:
+        amount = tariff.price * duration
+        if duration > 3:
+            discount = 10  # Скидка 10% для бронирований более 3 часов
+            amount *= 1 - discount / 100
+            logger.info(
+                f"Применена скидка 10% для бронирования на {duration} ч, итоговая сумма: {amount}"
+            )
+    else:
+        amount = tariff.price * (1 - discount / 100)
+
     description = f"Бронь: {tariff.name}, дата: {data['visit_date']}" + (
-        f", время: {data['visit_time']}, длительность: {data.get('duration')} ч"
+        f", время: {data['visit_time']}, длительность: {duration} ч, сумма: {amount:.2f} ₽"
         if tariff.purpose == "Переговорная"
         else ""
     )
@@ -440,7 +452,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         task = asyncio.create_task(poll_payment_status(message, state, bot=message.bot))
         await state.update_data(payment_task=task)
         logger.info(
-            f"Создан платёж {payment_id} для пользователя {message.from_user.id}"
+            f"Создан платёж {payment_id} для пользователя {message.from_user.id}, сумма: {amount:.2f}"
         )
 
 
@@ -487,6 +499,7 @@ async def handle_free_booking(
     duration = data.get("duration")
     amount = data["amount"]
     promocode_name = data.get("promocode_name", "-")
+    discount = data.get("discount", 0)
 
     booking, admin_message, session = create_booking(
         telegram_id=message.from_user.id,
@@ -515,26 +528,43 @@ async def handle_free_booking(
         user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
         tariffs = get_active_tariffs()
         tariff = next((t for t in tariffs if t.id == tariff_id), None)
-        rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+
+        # Формируем дату и время для Rubitime
+        if tariff.purpose == "Переговорная" and visit_time and duration:
+            # Комбинируем дату и время для "Переговорной"
+            rubitime_date = datetime.combine(visit_date, visit_time).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            rubitime_duration = duration * 60  # Преобразуем часы в минуты
+        else:
+            # Для остальных тарифов используем фиксированное время
+            rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+            rubitime_duration = None
+
         # Форматируем номер телефона для Rubitime
         formatted_phone = format_phone_for_rubitime(user.phone or "Не указано")
-        rubitime_id = await rubitime(
-            "create_record",
-            {
-                "service_id": tariff.service_id,
-                "name": user.full_name or "Не указано",
-                "email": user.email or "Не указано",
-                "phone": formatted_phone,
-                "record": rubitime_date,
-                "comment": f"Промокод: {promocode_name}, скидка: {data['discount']}%",
-                "coupon": promocode_name,
-                "coupon_discount": f"{data['discount']}%",
-            },
-        )
+        # Формируем параметры для Rubitime
+        rubitime_params = {
+            "service_id": tariff.service_id,
+            "name": user.full_name or "Не указано",
+            "email": user.email or "Не указано",
+            "phone": formatted_phone,
+            "record": rubitime_date,
+            "comment": f"Промокод: {promocode_name}, скидка: {discount}%",
+            "coupon": promocode_name,
+            "coupon_discount": f"{discount}%",
+            "price": amount,
+        }
+        if rubitime_duration:
+            rubitime_params["duration"] = rubitime_duration
+
+        rubitime_id = await rubitime("create_record", rubitime_params)
         if rubitime_id:
             booking.rubitime_id = rubitime_id
             session.commit()
-            logger.info(f"Запись в Rubitime создана: ID {rubitime_id}")
+            logger.info(
+                f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, duration={rubitime_duration}, price={amount}"
+            )
 
         await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
         await message.answer(
@@ -542,7 +572,7 @@ async def handle_free_booking(
             f"Тариф: {tariff.name}\n"
             f"Дата: {visit_date}\n"
             + (
-                f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
+                f"Время: {visit_time}\nПродолжительность: {duration} ч\nСумма: {amount:.2f} ₽\n"
                 if duration
                 else ""
             )
@@ -550,7 +580,7 @@ async def handle_free_booking(
             reply_markup=create_user_keyboard(),
         )
         logger.info(
-            f"Бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}, paid={paid}"
+            f"Бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}, paid={paid}, amount={amount}"
         )
     except Exception as e:
         logger.error(f"Ошибка при обработке брони: {str(e)}")
@@ -623,26 +653,43 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 )
                 tariffs = get_active_tariffs()
                 tariff = next((t for t in tariffs if t.id == tariff_id), None)
-                rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+
+                # Формируем дату и время для Rubitime
+                if tariff.purpose == "Переговорная" and visit_time and duration:
+                    # Комбинируем дату и время для "Переговорной"
+                    rubitime_date = datetime.combine(visit_date, visit_time).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    rubitime_duration = duration * 60  # Преобразуем часы в минуты
+                else:
+                    # Для остальных тарифов используем фиксированное время
+                    rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+                    rubitime_duration = None
+
                 # Форматируем номер телефона для Rubitime
                 formatted_phone = format_phone_for_rubitime(user.phone or "Не указано")
-                rubitime_id = await rubitime(
-                    "create_record",
-                    {
-                        "service_id": tariff.service_id,
-                        "name": user.full_name or "Не указано",
-                        "email": user.email or "Не указано",
-                        "phone": formatted_phone,
-                        "record": rubitime_date,
-                        "comment": f"Промокод: {promocode_name}, скидка: {discount}%",
-                        "coupon": promocode_name,
-                        "coupon_discount": f"{discount}%",
-                    },
-                )
+                # Формируем параметры для Rubitime
+                rubitime_params = {
+                    "service_id": tariff.service_id,
+                    "name": user.full_name or "Не указано",
+                    "email": user.email or "Не указано",
+                    "phone": formatted_phone,
+                    "record": rubitime_date,
+                    "comment": f"Промокод: {promocode_name}, скидка: {discount}%",
+                    "coupon": promocode_name,
+                    "coupon_discount": f"{discount}%",
+                    "price": amount,
+                }
+                if rubitime_duration:
+                    rubitime_params["duration"] = rubitime_duration
+
+                rubitime_id = await rubitime("create_record", rubitime_params)
                 if rubitime_id:
                     booking.rubitime_id = rubitime_id
                     session.commit()
-                    logger.info(f"Запись в Rubitime создана: ID {rubitime_id}")
+                    logger.info(
+                        f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, duration={rubitime_duration}, price={amount}"
+                    )
 
                 await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
                 await bot.edit_message_text(
@@ -650,7 +697,7 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                     f"Тариф: {tariff.name}\n"
                     f"Дата: {visit_date}\n"
                     + (
-                        f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
+                        f"Время: {visit_time}\nПродолжительность: {duration} ч\nСумма: {amount:.2f} ₽\n"
                         if duration
                         else ""
                     )
@@ -664,12 +711,12 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                     reply_markup=create_user_keyboard(),
                 )
                 logger.info(
-                    f"Бронь создана после оплаты для пользователя {message.from_user.id}, ID брони {booking.id}"
+                    f"Бронь создана после оплаты для пользователя {message.from_user.id}, ID брони {booking.id}, amount={amount}"
                 )
             except Exception as e:
                 logger.error(f"Ошибка после успешной оплаты: {str(e)}")
                 await bot.edit_message_text(
-                    text="Ошибка при создании брони. Попробуйте позже.",
+                    text="Ошибка при создания брони. Попробуйте позже.",
                     chat_id=message.chat.id,
                     message_id=payment_message_id,
                     reply_markup=create_user_keyboard(),
