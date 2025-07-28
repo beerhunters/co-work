@@ -1,3 +1,394 @@
+# import os
+# from datetime import datetime
+# import pytz
+# from aiogram import Router, Bot, Dispatcher, F
+# from aiogram.fsm.context import FSMContext
+# from aiogram.fsm.state import State, StatesGroup
+# from aiogram.types import (
+#     Message,
+#     CallbackQuery,
+#     InlineKeyboardMarkup,
+#     InlineKeyboardButton,
+# )
+# from dotenv import load_dotenv
+#
+# from models.models import get_active_tariffs, create_booking
+# from utils.logger import setup_logger
+#
+# logger = setup_logger(__name__)
+# load_dotenv()
+# router = Router()
+# MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+# ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+#
+#
+# class Booking(StatesGroup):
+#     """Состояния для процесса бронирования."""
+#
+#     SELECT_TARIFF = State()
+#     ENTER_DATE = State()
+#     ENTER_TIME = State()
+#     ENTER_DURATION = State()
+#
+#
+# def create_user_keyboard() -> InlineKeyboardMarkup:
+#     """
+#     Создаёт инлайн-клавиатуру для главного меню.
+#     """
+#     logger.debug("Создание инлайн-клавиатуры для пользователя")
+#     keyboard = InlineKeyboardMarkup(
+#         inline_keyboard=[
+#             [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
+#             [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
+#         ]
+#     )
+#     return keyboard
+#
+#
+# def create_back_keyboard() -> InlineKeyboardMarkup:
+#     """
+#     Создаёт инлайн-клавиатуру для возврата в главное меню.
+#     """
+#     logger.debug("Создание инлайн-клавиатуры для возврата")
+#     keyboard = InlineKeyboardMarkup(
+#         inline_keyboard=[
+#             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+#         ]
+#     )
+#     return keyboard
+#
+#
+# def create_tariff_keyboard() -> InlineKeyboardMarkup:
+#     """
+#     Создаёт инлайн-клавиатуру с активными тарифами.
+#     """
+#     try:
+#         tariffs = get_active_tariffs()
+#         buttons = [
+#             [
+#                 InlineKeyboardButton(
+#                     text=f"{tariff.name} ({tariff.price} ₽)",
+#                     callback_data=f"tariff_{tariff.id}",
+#                 )
+#             ]
+#             for tariff in tariffs
+#         ]
+#         buttons.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
+#         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+#         logger.debug("Создана клавиатура с тарифами")
+#         return keyboard
+#     except Exception as e:
+#         logger.error(f"Ошибка при создании клавиатуры тарифов: {str(e)}")
+#         return InlineKeyboardMarkup(
+#             inline_keyboard=[
+#                 [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
+#             ]
+#         )
+#
+#
+# @router.callback_query(F.data == "booking")
+# async def start_booking(
+#     callback_query: CallbackQuery, state: FSMContext, bot: Bot
+# ) -> None:
+#     """
+#     Обработчик нажатия кнопки 'Забронировать'. Показывает активные тарифы.
+#
+#     Args:
+#         callback_query: Callback-запрос от кнопки.
+#         state: Контекст состояния FSM.
+#         bot: Экземпляр бота.
+#     """
+#     tariffs = get_active_tariffs()
+#     if not tariffs:
+#         await callback_query.message.answer(
+#             "Нет доступных тарифов для бронирования.",
+#             reply_markup=create_back_keyboard(),
+#         )
+#         logger.info(
+#             f"Пользователь {callback_query.from_user.id} попытался забронировать, но нет активных тарифов"
+#         )
+#         await callback_query.message.delete()
+#         await callback_query.answer()
+#         return
+#
+#     await state.set_state(Booking.SELECT_TARIFF)
+#     await callback_query.message.answer(
+#         "Выберите тариф:", reply_markup=create_tariff_keyboard()
+#     )
+#     logger.info(
+#         f"Пользователь {callback_query.from_user.id} начал процесс бронирования"
+#     )
+#     await callback_query.message.delete()
+#     await callback_query.answer()
+#
+#
+# @router.callback_query(Booking.SELECT_TARIFF, F.data.startswith("tariff_"))
+# async def process_tariff_selection(
+#     callback_query: CallbackQuery, state: FSMContext
+# ) -> None:
+#     """
+#     Обработка выбора тарифа. Запрашивает дату или дату и время.
+#
+#     Args:
+#         callback_query: Callback-запрос с выбранным тарифом.
+#         state: Контекст состояния FSM.
+#     """
+#     if callback_query.data == "cancel":
+#         await state.clear()
+#         await callback_query.message.answer(
+#             "Бронирование отменено.", reply_markup=create_user_keyboard()
+#         )
+#         logger.info(f"Пользователь {callback_query.from_user.id} отменил бронирование")
+#         await callback_query.message.delete()
+#         await callback_query.answer()
+#         return
+#
+#     tariff_id = int(callback_query.data.split("_")[1])
+#     tariffs = get_active_tariffs()
+#     tariff = next((t for t in tariffs if t.id == tariff_id), None)
+#     if not tariff:
+#         await callback_query.message.answer(
+#             "Тариф не найден. Попробуйте снова.", reply_markup=create_tariff_keyboard()
+#         )
+#         logger.warning(
+#             f"Пользователь {callback_query.from_user.id} выбрал несуществующий тариф: {tariff_id}"
+#         )
+#         await callback_query.message.delete()
+#         await callback_query.answer()
+#         return
+#
+#     await state.update_data(tariff_id=tariff.id)
+#     await state.set_state(Booking.ENTER_DATE)
+#     await callback_query.message.answer(
+#         f"Вы выбрали тариф: {tariff.name}\nВведите дату визита (гггг-мм-дд, например, 2025-07-25):",
+#         reply_markup=create_back_keyboard(),
+#     )
+#     logger.info(
+#         f"Пользователь {callback_query.from_user.id} выбрал тариф {tariff.name}"
+#     )
+#     await callback_query.message.delete()
+#     await callback_query.answer()
+#
+#
+# @router.message(Booking.ENTER_DATE)
+# async def process_date(message: Message, state: FSMContext) -> None:
+#     """
+#     Обработка введённой даты. Проверяет формат и запрашивает время для 'Переговорной'.
+#
+#     Args:
+#         message: Входящее сообщение с датой.
+#         state: Контекст состояния FSM.
+#     """
+#     try:
+#         visit_date = datetime.strptime(message.text, "%Y-%m-%d").date()
+#         if visit_date < datetime.now(MOSCOW_TZ).date():
+#             await message.answer(
+#                 "Дата не может быть в прошлом. Введите снова:",
+#                 reply_markup=create_back_keyboard(),
+#             )
+#             logger.warning(
+#                 f"Пользователь {message.from_user.id} ввёл прошедшую дату: {message.text}"
+#             )
+#             return
+#     except ValueError:
+#         await message.answer(
+#             "Неверный формат даты. Введите в формате гггг-мм-дд (например, 2025-07-25):",
+#             reply_markup=create_back_keyboard(),
+#         )
+#         logger.warning(
+#             f"Пользователь {message.from_user.id} ввёл неверный формат даты: {message.text}"
+#         )
+#         return
+#
+#     data = await state.get_data()
+#     tariffs = get_active_tariffs()
+#     tariff = next((t for t in tariffs if t.id == data["tariff_id"]), None)
+#     if not tariff:
+#         await message.answer(
+#             "Тариф не найден. Попробуйте снова.", reply_markup=create_user_keyboard()
+#         )
+#         logger.warning(f"Тариф {data['tariff_id']} не найден при обработке даты")
+#         await state.clear()
+#         return
+#
+#     await state.update_data(visit_date=visit_date)
+#     if tariff.purpose == "Переговорная":
+#         await state.set_state(Booking.ENTER_TIME)
+#         await message.answer(
+#             "Введите время визита (чч:мм, например, 14:30):",
+#             reply_markup=create_back_keyboard(),
+#         )
+#         logger.info(
+#             f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff.name}"
+#         )
+#     else:
+#         # Для "Опенспейс" создаём бронирование
+#         booking, admin_message, session = create_booking(
+#             telegram_id=message.from_user.id, tariff_id=tariff.id, visit_date=visit_date
+#         )
+#         if booking:
+#             try:
+#                 await message.bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+#                 logger.info(
+#                     f"Отправлено сообщение администратору о брони: {booking.id}"
+#                 )
+#             except Exception as e:
+#                 logger.error(f"Ошибка отправки сообщения администратору: {str(e)}")
+#             finally:
+#                 if session:
+#                     session.close()
+#             await message.answer(
+#                 f"Бронь создана!\n"
+#                 f"Тариф: {tariff.name}\n"
+#                 f"Дата: {visit_date}\n"
+#                 f"Бронь подтверждена.",
+#                 reply_markup=create_user_keyboard(),
+#             )
+#             logger.info(
+#                 f"Пользователь {message.from_user.id} завершил бронирование Опенспейс: {visit_date}"
+#             )
+#         else:
+#             if session:
+#                 session.close()
+#             await message.answer(admin_message, reply_markup=create_user_keyboard())
+#             logger.warning(
+#                 f"Не удалось создать бронь для пользователя {message.from_user.id}"
+#             )
+#         await state.clear()
+#
+#
+# @router.message(Booking.ENTER_TIME)
+# async def process_time(message: Message, state: FSMContext) -> None:
+#     """
+#     Обработка введённого времени для 'Переговорной'. Запрашивает продолжительность.
+#
+#     Args:
+#         message: Входящее сообщение с временем.
+#         state: Контекст состояния FSM.
+#     """
+#     try:
+#         visit_time = datetime.strptime(message.text, "%H:%M").time()
+#     except ValueError:
+#         await message.answer(
+#             "Неверный формат времени. Введите в формате чч:мм (например, 14:30):",
+#             reply_markup=create_back_keyboard(),
+#         )
+#         logger.warning(
+#             f"Пользователь {message.from_user.id} ввёл неверный формат времени: {message.text}"
+#         )
+#         return
+#
+#     await state.update_data(visit_time=visit_time)
+#     await state.set_state(Booking.ENTER_DURATION)
+#     await message.answer(
+#         "Введите продолжительность бронирования в часах (например, 2):",
+#         reply_markup=create_back_keyboard(),
+#     )
+#     logger.info(f"Пользователь {message.from_user.id} ввёл время {visit_time}")
+#
+#
+# @router.message(Booking.ENTER_DURATION)
+# async def process_duration(message: Message, state: FSMContext) -> None:
+#     """
+#     Обработка введённой продолжительности. Создаёт бронирование для 'Переговорной'.
+#
+#     Args:
+#         message: Входящее сообщение с продолжительностью.
+#         state: Контекст состояния FSM.
+#     """
+#     try:
+#         duration = int(message.text)
+#         if duration <= 0:
+#             await message.answer(
+#                 "Продолжительность должна быть больше 0. Введите снова:",
+#                 reply_markup=create_back_keyboard(),
+#             )
+#             logger.warning(
+#                 f"Пользователь {message.from_user.id} ввёл некорректную продолжительность: {message.text}"
+#             )
+#             return
+#     except ValueError:
+#         await message.answer(
+#             "Введите целое число часов (например, 2):",
+#             reply_markup=create_back_keyboard(),
+#         )
+#         logger.warning(
+#             f"Пользователь {message.from_user.id} ввёл неверный формат продолжительности: {message.text}"
+#         )
+#         return
+#
+#     data = await state.get_data()
+#     tariffs = get_active_tariffs()
+#     tariff = next((t for t in tariffs if t.id == data["tariff_id"]), None)
+#     if not tariff:
+#         await message.answer(
+#             "Тариф не найден. Попробуйте снова.", reply_markup=create_user_keyboard()
+#         )
+#         logger.warning(
+#             f"Тариф {data['tariff_id']} не найден при обработке продолжительности"
+#         )
+#         await state.clear()
+#         return
+#
+#     booking, admin_message, session = create_booking(
+#         telegram_id=message.from_user.id,
+#         tariff_id=tariff.id,
+#         visit_date=data["visit_date"],
+#         visit_time=data["visit_time"],
+#         duration=duration,
+#     )
+#     if booking:
+#         try:
+#             await message.bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+#             logger.info(f"Отправлено сообщение администратору о брони: {booking.id}")
+#         except Exception as e:
+#             logger.error(f"Ошибка отправки сообщения администратору: {str(e)}")
+#         finally:
+#             if session:
+#                 session.close()
+#         await message.answer(
+#             f"Бронь создана!\n"
+#             f"Тариф: {tariff.name}\n"
+#             f"Дата: {data['visit_date']}\n"
+#             f"Время: {data['visit_time']}\n"
+#             f"Продолжительность: {duration} ч\n"
+#             f"Ожидайте подтверждения.",
+#             reply_markup=create_user_keyboard(),
+#         )
+#         logger.info(
+#             f"Пользователь {message.from_user.id} завершил бронирование Переговорной: {data['visit_date']}, {duration} ч"
+#         )
+#     else:
+#         if session:
+#             session.close()
+#         await message.answer(admin_message, reply_markup=create_user_keyboard())
+#         logger.warning(
+#             f"Не удалось создать бронь для пользователя {message.from_user.id}"
+#         )
+#     await state.clear()
+#
+#
+# @router.callback_query(F.data == "main_menu")
+# async def back_to_main_menu(callback_query: CallbackQuery, state: FSMContext) -> None:
+#     """
+#     Возврат в главное меню.
+#
+#     Args:
+#         callback_query: Callback-запрос.
+#         state: Контекст состояния FSM.
+#     """
+#     await state.clear()
+#     await callback_query.message.answer(
+#         "Главное меню:", reply_markup=create_user_keyboard()
+#     )
+#     logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
+#     await callback_query.message.delete()
+#     await callback_query.answer()
+#
+#
+# def register_book_handlers(dp: Dispatcher) -> None:
+#     """Регистрация обработчиков."""
+#     dp.include_router(router)
 import os
 from datetime import datetime
 import pytz
@@ -11,12 +402,20 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 from dotenv import load_dotenv
+from yookassa import Payment, Configuration
+import aiohttp
+import asyncio
+from typing import Optional, Tuple, Any
+from sqlalchemy.exc import IntegrityError
 
-from models.models import get_active_tariffs, create_booking
+from bot.config import create_payment, rubitime, check_payment_status
+from models.models import get_active_tariffs, create_booking, User
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 load_dotenv()
+
+
 router = Router()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
@@ -29,11 +428,17 @@ class Booking(StatesGroup):
     ENTER_DATE = State()
     ENTER_TIME = State()
     ENTER_DURATION = State()
+    ENTER_PROMOCODE = State()
+    PAYMENT = State()
+    STATUS_PAYMENT = State()
 
 
 def create_user_keyboard() -> InlineKeyboardMarkup:
     """
     Создаёт инлайн-клавиатуру для главного меню.
+
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопками для пользователя.
     """
     logger.debug("Создание инлайн-клавиатуры для пользователя")
     keyboard = InlineKeyboardMarkup(
@@ -48,6 +453,9 @@ def create_user_keyboard() -> InlineKeyboardMarkup:
 def create_back_keyboard() -> InlineKeyboardMarkup:
     """
     Создаёт инлайн-клавиатуру для возврата в главное меню.
+
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопкой возврата.
     """
     logger.debug("Создание инлайн-клавиатуры для возврата")
     keyboard = InlineKeyboardMarkup(
@@ -61,6 +469,9 @@ def create_back_keyboard() -> InlineKeyboardMarkup:
 def create_tariff_keyboard() -> InlineKeyboardMarkup:
     """
     Создаёт инлайн-клавиатуру с активными тарифами.
+
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с тарифами и кнопкой отмены.
     """
     try:
         tariffs = get_active_tariffs()
@@ -84,6 +495,51 @@ def create_tariff_keyboard() -> InlineKeyboardMarkup:
                 [InlineKeyboardButton(text="Отмена", callback_data="cancel")]
             ]
         )
+
+
+def create_payment_keyboard(
+    confirmation_url: str, amount: float
+) -> InlineKeyboardMarkup:
+    """
+    Создаёт клавиатуру с кнопкой оплаты и отмены.
+
+    Args:
+        confirmation_url: URL для оплаты через YooKassa.
+        amount: Сумма платежа.
+
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопками оплаты и отмены.
+    """
+    logger.debug(f"Создание клавиатуры для оплаты, сумма: {amount}")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"Оплатить {amount} ₽", url=confirmation_url),
+                InlineKeyboardButton(text="Отмена", callback_data="cancel_payment"),
+            ]
+        ]
+    )
+    return keyboard
+
+
+# async def check_payment_status(payment_id: str) -> Optional[str]:
+#     """
+#     Проверка статуса платежа через YooKassa.
+#
+#     Args:
+#         payment_id: ID платежа.
+#
+#     Returns:
+#         Optional[str]: Статус платежа ('succeeded', 'canceled', etc.) или None при ошибке.
+#     """
+#     try:
+#         payment = await asyncio.get_event_loop().run_in_executor(
+#             None, Payment.find_one, payment_id
+#         )
+#         return payment.status
+#     except Exception as e:
+#         logger.error(f"Ошибка проверки статуса платежа {payment_id}: {str(e)}")
+#         return None
 
 
 @router.callback_query(F.data == "booking")
@@ -127,7 +583,7 @@ async def process_tariff_selection(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
     """
-    Обработка выбора тарифа. Запрашивает дату или дату и время.
+    Обработка выбора тарифа. Запрашивает дату.
 
     Args:
         callback_query: Callback-запрос с выбранным тарифом.
@@ -173,7 +629,7 @@ async def process_tariff_selection(
 @router.message(Booking.ENTER_DATE)
 async def process_date(message: Message, state: FSMContext) -> None:
     """
-    Обработка введённой даты. Проверяет формат и запрашивает время для 'Переговорной'.
+    Обработка введённой даты. Проверяет формат и запрашивает время для 'Переговорной' или промокод.
 
     Args:
         message: Входящее сообщение с датой.
@@ -222,39 +678,14 @@ async def process_date(message: Message, state: FSMContext) -> None:
             f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff.name}"
         )
     else:
-        # Для "Опенспейс" создаём бронирование
-        booking, admin_message, session = create_booking(
-            telegram_id=message.from_user.id, tariff_id=tariff.id, visit_date=visit_date
+        await state.set_state(Booking.ENTER_PROMOCODE)
+        await message.answer(
+            "Введите промокод (или /skip для пропуска):",
+            reply_markup=create_back_keyboard(),
         )
-        if booking:
-            try:
-                await message.bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
-                logger.info(
-                    f"Отправлено сообщение администратору о брони: {booking.id}"
-                )
-            except Exception as e:
-                logger.error(f"Ошибка отправки сообщения администратору: {str(e)}")
-            finally:
-                if session:
-                    session.close()
-            await message.answer(
-                f"Бронь создана!\n"
-                f"Тариф: {tariff.name}\n"
-                f"Дата: {visit_date}\n"
-                f"Бронь подтверждена.",
-                reply_markup=create_user_keyboard(),
-            )
-            logger.info(
-                f"Пользователь {message.from_user.id} завершил бронирование Опенспейс: {visit_date}"
-            )
-        else:
-            if session:
-                session.close()
-            await message.answer(admin_message, reply_markup=create_user_keyboard())
-            logger.warning(
-                f"Не удалось создать бронь для пользователя {message.from_user.id}"
-            )
-        await state.clear()
+        logger.info(
+            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff.name}"
+        )
 
 
 @router.message(Booking.ENTER_TIME)
@@ -290,7 +721,7 @@ async def process_time(message: Message, state: FSMContext) -> None:
 @router.message(Booking.ENTER_DURATION)
 async def process_duration(message: Message, state: FSMContext) -> None:
     """
-    Обработка введённой продолжительности. Создаёт бронирование для 'Переговорной'.
+    Обработка введённой продолжительности. Запрашивает промокод.
 
     Args:
         message: Входящее сообщение с продолжительностью.
@@ -317,6 +748,26 @@ async def process_duration(message: Message, state: FSMContext) -> None:
         )
         return
 
+    await state.update_data(duration=duration)
+    await state.set_state(Booking.ENTER_PROMOCODE)
+    await message.answer(
+        "Введите промокод (или /skip для пропуска):",
+        reply_markup=create_back_keyboard(),
+    )
+    logger.info(
+        f"Пользователь {message.from_user.id} ввёл продолжительность {duration} ч"
+    )
+
+
+@router.message(Booking.ENTER_PROMOCODE)
+async def process_promocode(message: Message, state: FSMContext) -> None:
+    """
+    Обработка введённого промокода или его пропуска. Создаёт платёж.
+
+    Args:
+        message: Входящее сообщение с промокодом.
+        state: Контекст состояния FSM.
+    """
     data = await state.get_data()
     tariffs = get_active_tariffs()
     tariff = next((t for t in tariffs if t.id == data["tariff_id"]), None)
@@ -324,65 +775,330 @@ async def process_duration(message: Message, state: FSMContext) -> None:
         await message.answer(
             "Тариф не найден. Попробуйте снова.", reply_markup=create_user_keyboard()
         )
+        logger.warning(f"Тариф {data['tariff_id']} не найден при обработке промокода")
+        await state.clear()
+        return
+
+    promocode = message.text.strip()
+    discount = 0
+    promocode_name = None
+    if promocode != "/skip":
+        # Здесь должна быть проверка промокода в БД, но в текущем проекте промокоды не реализованы
+        await message.answer(
+            "Промокоды пока не поддерживаются. Продолжаем без скидки.",
+            reply_markup=create_back_keyboard(),
+        )
         logger.warning(
-            f"Тариф {data['tariff_id']} не найден при обработке продолжительности"
+            f"Попытка использовать промокод {promocode}, но функционал не реализован"
+        )
+    else:
+        logger.info(f"Пользователь {message.from_user.id} пропустил промокод")
+
+    amount = tariff.price * (1 - discount / 100)
+    description = f"Бронь: {tariff.name}, дата: {data['visit_date']}" + (
+        f", время: {data['visit_time']}, длительность: {data.get('duration')} ч"
+        if tariff.purpose == "Переговорная"
+        else ""
+    )
+
+    await state.update_data(
+        amount=amount, promocode_name=promocode_name, discount=discount
+    )
+
+    if amount == 0:
+        await handle_free_booking(message, state, bot=message.bot)
+    else:
+        payment_id, confirmation_url = await create_payment(description, amount)
+        if not payment_id or not confirmation_url:
+            await message.answer(
+                "Ошибка при создании платежа. Попробуйте позже.",
+                reply_markup=create_user_keyboard(),
+            )
+            logger.error(
+                f"Не удалось создать платёж для пользователя {message.from_user.id}"
+            )
+            await state.clear()
+            return
+
+        await state.update_data(payment_id=payment_id)
+        payment_message = await message.answer(
+            f"Оплатите бронирование:\n{description}\nСумма: {amount:.2f} ₽",
+            reply_markup=create_payment_keyboard(confirmation_url, amount),
+        )
+        await state.update_data(payment_message_id=payment_message.message_id)
+        await state.set_state(Booking.STATUS_PAYMENT)
+
+        task = asyncio.create_task(poll_payment_status(message, state, bot=message.bot))
+        await state.update_data(payment_task=task)
+        logger.info(
+            f"Создан платёж {payment_id} для пользователя {message.from_user.id}"
+        )
+
+
+async def handle_free_booking(message: Message, state: FSMContext, bot: Bot) -> None:
+    """
+    Обработка бесплатного бронирования (если сумма после скидки = 0).
+
+    Args:
+        message: Входящее сообщение.
+        state: Контекст состояния FSM.
+        bot: Экземпляр бота.
+    """
+    data = await state.get_data()
+    tariff_id = data["tariff_id"]
+    visit_date = data["visit_date"]
+    visit_time = data.get("visit_time")
+    duration = data.get("duration")
+    amount = data["amount"]
+    promocode_name = data.get("promocode_name", "-")
+
+    booking, admin_message, session = create_booking(
+        telegram_id=message.from_user.id,
+        tariff_id=tariff_id,
+        visit_date=visit_date,
+        visit_time=visit_time,
+        duration=duration,
+        amount=amount,
+        paid=True,
+        confirmed=True if duration is None else False,
+    )
+    if not booking:
+        if session:
+            session.close()
+        await message.answer(
+            admin_message or "Ошибка при создании брони.",
+            reply_markup=create_user_keyboard(),
+        )
+        logger.warning(
+            f"Не удалось создать бесплатную бронь для пользователя {message.from_user.id}"
         )
         await state.clear()
         return
 
-    booking, admin_message, session = create_booking(
-        telegram_id=message.from_user.id,
-        tariff_id=tariff.id,
-        visit_date=data["visit_date"],
-        visit_time=data["visit_time"],
-        duration=duration,
-    )
-    if booking:
-        try:
-            await message.bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
-            logger.info(f"Отправлено сообщение администратору о брони: {booking.id}")
-        except Exception as e:
-            logger.error(f"Ошибка отправки сообщения администратору: {str(e)}")
-        finally:
-            if session:
-                session.close()
+    try:
+        # Создание записи в Rubitime
+        user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
+        tariffs = get_active_tariffs()
+        tariff = next((t for t in tariffs if t.id == tariff_id), None)
+        rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+        rubitime_id = await rubitime(
+            "create_record",
+            {
+                "service_id": tariff.service_id,
+                "name": user.full_name or "Не указано",
+                "email": user.email or "Не указано",
+                "phone": user.phone or "Не указано",
+                "record": rubitime_date,
+                "comment": f"Промокод: {promocode_name}, скидка: {data['discount']}%",
+                "coupon": promocode_name,
+                "coupon_discount": f"{data['discount']}%",
+            },
+        )
+        if rubitime_id:
+            booking.rubitime_id = rubitime_id
+            session.commit()
+            logger.info(f"Запись в Rubitime создана: ID {rubitime_id}")
+
+        # Уведомления
+        await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
         await message.answer(
             f"Бронь создана!\n"
             f"Тариф: {tariff.name}\n"
-            f"Дата: {data['visit_date']}\n"
-            f"Время: {data['visit_time']}\n"
-            f"Продолжительность: {duration} ч\n"
-            f"Ожидайте подтверждения.",
+            f"Дата: {visit_date}\n"
+            + (
+                f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
+                if duration
+                else ""
+            )
+            + (
+                f"Ожидайте подтверждения."
+                if tariff.purpose == "Переговорная"
+                else "Бронь подтверждена."
+            ),
             reply_markup=create_user_keyboard(),
         )
         logger.info(
-            f"Пользователь {message.from_user.id} завершил бронирование Переговорной: {data['visit_date']}, {duration} ч"
+            f"Бесплатная бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}"
         )
-    else:
+    except Exception as e:
+        logger.error(f"Ошибка при обработке бесплатной брони: {str(e)}")
+        await message.answer(
+            "Ошибка при создании брони. Попробуйте позже.",
+            reply_markup=create_user_keyboard(),
+        )
+    finally:
         if session:
             session.close()
-        await message.answer(admin_message, reply_markup=create_user_keyboard())
-        logger.warning(
-            f"Не удалось создать бронь для пользователя {message.from_user.id}"
-        )
-    await state.clear()
+        await state.clear()
 
 
-@router.callback_query(F.data == "main_menu")
-async def back_to_main_menu(callback_query: CallbackQuery, state: FSMContext) -> None:
+async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> None:
     """
-    Возврат в главное меню.
+    Проверка статуса платежа с ограничением по времени.
+
+    Args:
+        message: Входящее сообщение.
+        state: Контекст состояния FSM.
+        bot: Экземпляр бота.
+    """
+    data = await state.get_data()
+    payment_id = data["payment_id"]
+    payment_message_id = data["payment_message_id"]
+    tariff_id = data["tariff_id"]
+    visit_date = data["visit_date"]
+    visit_time = data.get("visit_time")
+    duration = data.get("duration")
+    amount = data["amount"]
+    promocode_name = data.get("promocode_name", "-")
+    discount = data.get("discount", 0)
+
+    max_attempts = 60  # 5 минут (60 * 5 сек)
+    delay = 5  # Секунды между попытками
+
+    for _ in range(max_attempts):
+        status = await check_payment_status(payment_id)
+        if status == "succeeded":
+            booking, admin_message, session = create_booking(
+                telegram_id=message.from_user.id,
+                tariff_id=tariff_id,
+                visit_date=visit_date,
+                visit_time=visit_time,
+                duration=duration,
+                amount=amount,
+                paid=True,
+                confirmed=True if duration is None else False,
+            )
+            if not booking:
+                if session:
+                    session.close()
+                await bot.edit_message_text(
+                    "Ошибка при создании брони. Попробуйте позже.",
+                    chat_id=message.chat.id,
+                    message_id=payment_message_id,
+                    reply_markup=create_user_keyboard(),
+                )
+                logger.warning(
+                    f"Не удалось создать бронь после оплаты для пользователя {message.from_user.id}"
+                )
+                await state.clear()
+                return
+
+            try:
+                user = (
+                    session.query(User)
+                    .filter_by(telegram_id=message.from_user.id)
+                    .first()
+                )
+                tariffs = get_active_tariffs()
+                tariff = next((t for t in tariffs if t.id == tariff_id), None)
+                rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
+                rubitime_id = await rubitime(
+                    "create_record",
+                    {
+                        "service_id": tariff.service_id,
+                        "name": user.full_name or "Не указано",
+                        "email": user.email or "Не указано",
+                        "phone": user.phone or "Не указано",
+                        "record": rubitime_date,
+                        "comment": f"Промокод: {promocode_name}, скидка: {discount}%",
+                        "coupon": promocode_name,
+                        "coupon_discount": f"{discount}%",
+                    },
+                )
+                if rubitime_id:
+                    booking.rubitime_id = rubitime_id
+                    session.commit()
+                    logger.info(f"Запись в Rubitime создана: ID {rubitime_id}")
+
+                await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+                await bot.edit_message_text(
+                    f"Бронь создана!\n"
+                    f"Тариф: {tariff.name}\n"
+                    f"Дата: {visit_date}\n"
+                    + (
+                        f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
+                        if duration
+                        else ""
+                    )
+                    + (
+                        f"Ожидайте подтверждения."
+                        if tariff.purpose == "Переговорная"
+                        else "Бронь подтверждена."
+                    ),
+                    chat_id=message.chat.id,
+                    message_id=payment_message_id,
+                    reply_markup=create_user_keyboard(),
+                )
+                logger.info(
+                    f"Бронь создана после оплаты для пользователя {message.from_user.id}, ID брони {booking.id}"
+                )
+            except Exception as e:
+                logger.error(f"Ошибка после успешной оплаты: {str(e)}")
+                await bot.edit_message_text(
+                    "Ошибка при создании брони. Попробуйте позже.",
+                    chat_id=message.chat.id,
+                    message_id=payment_message_id,
+                    reply_markup=create_user_keyboard(),
+                )
+            finally:
+                if session:
+                    session.close()
+                await state.clear()
+            return
+        elif status == "canceled":
+            await bot.edit_message_text(
+                "Платёж отменён.",
+                chat_id=message.chat.id,
+                message_id=payment_message_id,
+                reply_markup=create_user_keyboard(),
+            )
+            await state.clear()
+            return
+        await asyncio.sleep(delay)
+
+    await bot.edit_message_text(
+        "Время оплаты истекло. Попробуйте снова.",
+        chat_id=message.chat.id,
+        message_id=payment_message_id,
+        reply_markup=create_user_keyboard(),
+    )
+    await state.clear()
+    logger.warning(f"Время оплаты истекло для payment_id {payment_id}")
+
+
+@router.callback_query(Booking.STATUS_PAYMENT, F.data == "cancel_payment")
+async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработка отмены платежа.
 
     Args:
         callback_query: Callback-запрос.
         state: Контекст состояния FSM.
     """
-    await state.clear()
-    await callback_query.message.answer(
-        "Главное меню:", reply_markup=create_user_keyboard()
+    data = await state.get_data()
+    payment_id = data.get("payment_id")
+    payment_message_id = data.get("payment_message_id")
+    payment_task = data.get("payment_task")
+
+    if payment_task and not payment_task.done():
+        payment_task.cancel()
+        logger.info(f"Задача проверки платежа {payment_id} отменена")
+
+    if payment_id:
+        try:
+            Payment.cancel(payment_id)
+            logger.debug(f"Платёж {payment_id} отменён в YooKassa")
+        except Exception as e:
+            logger.error(f"Ошибка отмены платежа {payment_id}: {str(e)}")
+
+    await callback_query.message.edit_text(
+        "Платёж отменён.",
+        chat_id=callback_query.message.chat.id,
+        message_id=payment_message_id,
+        reply_markup=create_user_keyboard(),
     )
-    logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
-    await callback_query.message.delete()
+    await state.clear()
+    logger.info(f"Платёж отменён для пользователя {callback_query.from_user.id}")
     await callback_query.answer()
 
 

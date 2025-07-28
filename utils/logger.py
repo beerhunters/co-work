@@ -1,10 +1,10 @@
+import time
+from datetime import datetime
 from logging import Logger, getLogger, Formatter, StreamHandler, FileHandler
 from os import makedirs, environ
-from typing import Optional
-from dotenv import load_dotenv
-from datetime import datetime
+
 import pytz
-import time
+from dotenv import load_dotenv
 
 
 def setup_logger(name: str) -> Logger:

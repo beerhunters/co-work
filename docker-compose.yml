@@ -6,6 +6,10 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_TELEGRAM_ID=${ADMIN_TELEGRAM_ID}
+      - YOKASSA_ACCOUNT_ID=${YOKASSA_ACCOUNT_ID}
+      - YOKASSA_SECRET_KEY=${YOKASSA_SECRET_KEY}
+      - RUBITIME_API_KEY=${RUBITIME_API_KEY}
+      - BOT_LINK=${BOT_LINK}
     volumes:
       - ./data:/data
     restart: unless-stopped

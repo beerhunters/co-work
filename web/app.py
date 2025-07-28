@@ -10,7 +10,6 @@ import time
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-# logger = logging.getLogger(__name__)
 db = SQLAlchemy()
 login_manager = LoginManager()
 
