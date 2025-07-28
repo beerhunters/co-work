@@ -11,6 +11,7 @@ import os
 import asyncio
 
 from models.models import User, Admin, Notification, Tariff, Booking
+from utils.bot_instance import get_bot
 from utils.logger import setup_logger
 from .app import db
 
@@ -414,23 +415,31 @@ def init_routes(app: Flask) -> None:
             logger.error(f"Ошибка удаления бронирования {booking_id}: {str(e)}")
         return redirect(url_for("bookings"))
 
-    def send_telegram_message_sync(chat_id: int, message: str) -> bool:
-        """Синхронная обертка для отправки сообщений в Telegram."""
-        if not bot:
-            logger.error("Бот не инициализирован")
-            return False
+    def send_telegram_message_sync(telegram_id: int, message: str) -> bool:
+        """
+        Отправляет сообщение пользователю через Telegram в синхронном контексте.
 
+        Args:
+            telegram_id: ID пользователя в Telegram.
+            message: Текст сообщения.
+
+        Returns:
+            bool: True, если сообщение отправлено успешно, иначе False.
+        """
         try:
-            # Создаем новый event loop для выполнения async функции
+            bot = get_bot()  # Получаем экземпляр бота
+            # Используем run_in_executor для выполнения асинхронной функции в синхронном контексте
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(bot.send_message(chat_id, message))
-                return True
-            finally:
-                loop.close()
+            success = loop.run_until_complete(
+                bot.send_message(chat_id=telegram_id, text=message)
+            )
+            loop.close()
+            return bool(success)
         except Exception as e:
-            logger.error(f"Ошибка отправки сообщения в Telegram: {str(e)}")
+            logger.error(
+                f"Не удалось отправить сообщение пользователю {telegram_id}: {str(e)}"
+            )
             return False
 
     @app.route("/booking/<int:booking_id>/confirm", methods=["POST"])

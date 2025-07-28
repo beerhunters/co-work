@@ -2,6 +2,8 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+
+from utils.bot_instance import get_bot
 from .hndlrs.registration_hndlr import register_reg_handlers
 from .hndlrs.booking_hndlr import register_book_handlers
 from models.models import init_db, create_admin
@@ -35,7 +37,8 @@ async def main() -> None:
             f.write("initialized")
         logger.info("Файл-маркер инициализации создан: /data/bot_initialized")
 
-        bot = Bot(token=os.getenv("BOT_TOKEN"))
+        # bot = Bot(token=os.getenv("BOT_TOKEN"))
+        bot = get_bot()
         dp = Dispatcher(storage=MemoryStorage())
 
         # Регистрация обработчиков

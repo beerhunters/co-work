@@ -12,6 +12,7 @@ services:
       - BOT_LINK=${BOT_LINK}
     volumes:
       - ./data:/data
+      - ./utils:/app/utils
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "test", "-f", "/data/bot_initialized"]
@@ -27,10 +28,12 @@ services:
     environment:
       - ADMIN_LOGIN=${ADMIN_LOGIN}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - BOT_TOKEN=${BOT_TOKEN}
     ports:
       - "5001:5001"
     volumes:
       - ./data:/data
+      - ./utils:/app/utils
     restart: unless-stopped
     depends_on:
       bot:

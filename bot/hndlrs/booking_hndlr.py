@@ -1,5 +1,8 @@
+import asyncio
 import os
+import re
 from datetime import datetime
+
 import pytz
 from aiogram import Router, Bot, Dispatcher, F
 from aiogram.fsm.context import FSMContext
@@ -12,9 +15,6 @@ from aiogram.types import (
 )
 from dotenv import load_dotenv
 from yookassa import Payment, Refund
-import asyncio
-from typing import Optional
-import re
 
 from bot.config import create_payment, rubitime, check_payment_status
 from models.models import get_active_tariffs, create_booking, User
@@ -368,7 +368,7 @@ async def process_duration(message: Message, state: FSMContext) -> None:
 @router.message(Booking.ENTER_PROMOCODE)
 async def process_promocode(message: Message, state: FSMContext) -> None:
     """
-    Обработка введённого промокода или его пропуска. Создаёт платёж.
+    Обработка введённого промокода или его пропуска. Создаёт платёж или бронь в зависимости от тарифа.
     Args:
         message: Входящее сообщение с промокодом.
         state: Контекст состояния FSM.
@@ -409,9 +409,14 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         amount=amount, promocode_name=promocode_name, discount=discount
     )
 
-    if amount == 0:
-        await handle_free_booking(message, state, bot=message.bot)
+    if tariff.purpose == "Переговорная":
+        # Для "Переговорной" создаём бронь без оплаты
+        await handle_free_booking(message, state, bot=message.bot, paid=False)
+    elif amount == 0:
+        # Для бесплатных бронирований (не "Переговорная") с нулевой суммой
+        await handle_free_booking(message, state, bot=message.bot, paid=True)
     else:
+        # Для остальных тарифов создаём платёж
         payment_id, confirmation_url = await create_payment(description, amount)
         if not payment_id or not confirmation_url:
             await message.answer(
@@ -464,13 +469,16 @@ def format_phone_for_rubitime(phone: str) -> str:
     return "Не указано"
 
 
-async def handle_free_booking(message: Message, state: FSMContext, bot: Bot) -> None:
+async def handle_free_booking(
+    message: Message, state: FSMContext, bot: Bot, paid: bool = True
+) -> None:
     """
-    Обработка бесплатного бронирования (если сумма после скидки = 0).
+    Обработка бронирования без оплаты (для "Переговорной" или если сумма после скидки = 0).
     Args:
         message: Входящее сообщение.
         state: Контекст состояния FSM.
         bot: Экземпляр бота.
+        paid: Флаг, указывающий, оплачена ли бронь (True для бесплатных, False для "Переговорной").
     """
     data = await state.get_data()
     tariff_id = data["tariff_id"]
@@ -487,8 +495,8 @@ async def handle_free_booking(message: Message, state: FSMContext, bot: Bot) -> 
         visit_time=visit_time,
         duration=duration,
         amount=amount,
-        paid=True,
-        confirmed=True if duration is None else False,
+        paid=paid,
+        confirmed=False,  # Всегда False, так как требует подтверждения
     )
     if not booking:
         if session:
@@ -498,7 +506,7 @@ async def handle_free_booking(message: Message, state: FSMContext, bot: Bot) -> 
             reply_markup=create_user_keyboard(),
         )
         logger.warning(
-            f"Не удалось создать бесплатную бронь для пользователя {message.from_user.id}"
+            f"Не удалось создать бронь для пользователя {message.from_user.id}"
         )
         await state.clear()
         return
@@ -538,18 +546,14 @@ async def handle_free_booking(message: Message, state: FSMContext, bot: Bot) -> 
                 if duration
                 else ""
             )
-            + (
-                f"Ожидайте подтверждения."
-                if tariff.purpose == "Переговорная"
-                else "Бронь подтверждена."
-            ),
+            + "Ожидайте подтверждения.",
             reply_markup=create_user_keyboard(),
         )
         logger.info(
-            f"Бесплатная бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}"
+            f"Бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}, paid={paid}"
         )
     except Exception as e:
-        logger.error(f"Ошибка при обработке бесплатной брони: {str(e)}")
+        logger.error(f"Ошибка при обработке брони: {str(e)}")
         await message.answer(
             "Ошибка при создании брони. Попробуйте позже.",
             reply_markup=create_user_keyboard(),
@@ -742,6 +746,7 @@ async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> No
         except Exception as e:
             logger.warning(f"Не удалось обработать платёж {payment_id}: {str(e)}")
             logger.info(f"Завершаем отмену без дополнительного обращения к YooKassa")
+
     await callback_query.message.edit_text(
         text="Платёж отменён.",
         reply_markup=create_user_keyboard(),
