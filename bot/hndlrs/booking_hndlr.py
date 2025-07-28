@@ -20,7 +20,8 @@ from bot.config import (
     create_payment,
     rubitime,
     check_payment_status,
-    create_user_keyboard, create_back_keyboard,
+    create_user_keyboard,
+    create_back_keyboard,
 )
 from models.models import (
     get_active_tariffs,
