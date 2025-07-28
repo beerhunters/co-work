@@ -354,6 +354,7 @@ def init_routes(app: Flask) -> None:
             booking=booking,
             user=booking.user,
             tariff=booking.tariff,
+            promocode=booking.promocode,
             edit=False,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,

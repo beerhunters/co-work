@@ -47,6 +47,10 @@
             </div>
             {% endif %}
             <div class="form-group">
+                <label>Промокод</label>
+                <p>{{ promocode.name or 'Не указан' }}</p>
+            </div>
+            <div class="form-group">
                 <label>Сумма (₽)</label>
                 {% if edit %}
                 <input type="number" step="0.01" class="form-control" name="amount" value="{{ booking.amount }}" required min="0">

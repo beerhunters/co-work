@@ -135,6 +135,7 @@ async def agree_to_terms(callback_query: CallbackQuery, state: FSMContext) -> No
     logger.info(f"Пользователь {callback_query.from_user.id} согласился с правилами")
     try:
         add_user(telegram_id=callback_query.from_user.id, agreed_to_terms=True)
+        await callback_query.answer()
     except Exception as e:
         logger.error(
             f"Ошибка при обновлении agreed_to_terms для пользователя {callback_query.from_user.id}: {e}"

@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Date,
     Time,
+    select,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, Session as SQLAlchemySession
@@ -332,6 +333,7 @@ def create_booking(
     visit_date: datetime.date,
     visit_time: Optional[datetime.time] = None,
     duration: Optional[int] = None,
+    promocode_id: Optional[int] = None,
     amount: Optional[float] = None,
     paid: Optional[bool] = False,
     confirmed: Optional[bool] = False,
@@ -372,6 +374,7 @@ def create_booking(
             visit_date=visit_date,
             visit_time=visit_time,
             duration=duration,
+            promocode_id=promocode_id,
             amount=amount or tariff.price,
             paid=paid,
             confirmed=confirmed,
@@ -422,3 +425,15 @@ def create_booking(
         logger.error(f"Ошибка создания брони для пользователя {telegram_id}: {str(e)}")
         session.close()
         return None, "Ошибка при создании брони", None
+
+
+def get_promocode_by_name(promocode_name: str) -> Optional[Promocode]:
+    session = Session()
+    promocode = (
+        session.execute(
+            select(Promocode).where(
+                Promocode.name == promocode_name, Promocode.is_active == True
+            )
+        )
+    ).scalar_one_or_none()
+    return promocode
