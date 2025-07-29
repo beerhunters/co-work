@@ -39,7 +39,11 @@
             <div class="form-group">
                 <label>Назначение</label>
                 {% if edit or new %}
-                <input type="text" class="form-control" name="purpose" value="{{ tariff.purpose or '' }}" maxlength="50">
+                <select class="form-control" name="purpose">
+                    <option value="" {% if not tariff.purpose %}selected{% endif %}>Не указано</option>
+                    <option value="Переговорная" {% if tariff.purpose == 'Переговорная' %}selected{% endif %}>Переговорная</option>
+                    <option value="Опенспейс" {% if tariff.purpose == 'Опенспейс' %}selected{% endif %}>Опенспейс</option>
+                </select>
                 {% else %}
                 <p>{{ tariff.purpose or 'Не указано' }}</p>
                 {% endif %}

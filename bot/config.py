@@ -133,7 +133,7 @@ async def create_payment(
                 "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
                 "confirmation": {
                     "type": "redirect",
-                    "return_url": os.getenv("BOT_LINK", "https://t.me/your_bot"),
+                    "return_url": os.getenv("BOT_LINK"),
                 },
                 "capture": True,
                 "description": description,
