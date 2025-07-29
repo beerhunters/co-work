@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 from datetime import datetime
+from typing import Optional
 
 import pytz
 from aiogram import Router, Bot, Dispatcher, F
@@ -29,6 +30,7 @@ from models.models import (
     User,
     get_user_by_telegram_id,
     get_promocode_by_name,
+    Promocode,
 )
 from utils.logger import setup_logger
 
@@ -68,7 +70,6 @@ def create_tariff_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
         tariffs = get_active_tariffs()
         buttons = []
         for tariff in tariffs:
-            # Пропускаем тариф 'Тестовый день', если у пользователя есть успешные бронирования
             if tariff.service_id == 47890 and successful_bookings > 0:
                 continue
             buttons.append(
@@ -138,7 +139,8 @@ async def start_booking(
             reply_markup=create_back_keyboard(),
         )
         logger.info(
-            f"Пользователь {callback_query.from_user.id} попытался забронировать, но нет активных тарифов"
+            f"Пользователь {callback_query.from_user.id} попытался забронировать, "
+            f"но нет активных тарифов"
         )
         await callback_query.message.delete()
         await callback_query.answer()
@@ -176,11 +178,11 @@ async def cancel_tariff_selection(
 
 
 @router.callback_query(
+    F.data == "main_menu",
     Booking.ENTER_DATE
     or Booking.ENTER_TIME
     or Booking.ENTER_DURATION
     or Booking.ENTER_PROMOCODE,
-    F.data == "main_menu",
 )
 async def cancel_booking(callback_query: CallbackQuery, state: FSMContext) -> None:
     """
@@ -223,10 +225,17 @@ async def process_tariff_selection(
         await callback_query.answer()
         return
 
-    await state.update_data(tariff_id=tariff.id, tariff=tariff)
+    await state.update_data(
+        tariff_id=tariff.id,
+        tariff_name=tariff.name,
+        tariff_purpose=tariff.purpose,
+        tariff_service_id=tariff.service_id,
+        tariff_price=tariff.price,
+    )
     await state.set_state(Booking.ENTER_DATE)
     await callback_query.message.edit_text(
-        text=f"Вы выбрали тариф: {tariff.name}\nВведите дату визита (гггг-мм-дд, например, 2025-07-25):",
+        text=f"Вы выбрали тариф: {tariff.name}\n"
+        f"Введите дату визита (гггг-мм-дд, например, 2025-07-25):",
         reply_markup=create_back_keyboard(),
     )
     logger.info(
@@ -266,16 +275,17 @@ async def process_date(message: Message, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
-    tariff = data["tariff"]
+    tariff_purpose = data["tariff_purpose"]
+    tariff_name = data["tariff_name"]
     await state.update_data(visit_date=visit_date)
-    if tariff.purpose == "Переговорная":
+    if tariff_purpose == "Переговорная":
         await state.set_state(Booking.ENTER_TIME)
         await message.answer(
             "Введите время визита (чч:мм, например, 14:30):",
             reply_markup=create_back_keyboard(),
         )
         logger.info(
-            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff.name}"
+            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name}"
         )
     else:
         await state.set_state(Booking.ENTER_PROMOCODE)
@@ -284,7 +294,7 @@ async def process_date(message: Message, state: FSMContext) -> None:
             reply_markup=create_back_keyboard(),
         )
         logger.info(
-            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff.name}"
+            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name}"
         )
 
 
@@ -367,13 +377,14 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
     Args:
         message: Входящее сообщение с промокодом.
         state: Контекст состояния FSM.
-        session: Асинхронная сессия SQLAlchemy.
     """
     data = await state.get_data()
-    tariff = data["tariff"]
-    promocode = None
-    promocode_name = None
-    discount = 0
+    tariff_purpose = data["tariff_purpose"]
+    tariff_name = data["tariff_name"]
+    tariff_price = data["tariff_price"]
+    promocode_id: Optional[int] = None
+    promocode_name: Optional[str] = None
+    discount: float = 0
 
     if message.text != "/skip":
         promocode_name = message.text.strip()
@@ -412,6 +423,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
             return
 
         discount = promocode.discount
+        promocode_id = promocode.id
         await message.answer(
             f"Промокод '{promocode_name}' применён! Скидка: {discount}%",
             reply_markup=create_back_keyboard(),
@@ -422,55 +434,51 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
     else:
         logger.info(f"Пользователь {message.from_user.id} пропустил промокод")
 
-    # Рассчитываем стоимость с учетом скидки и продолжительности для "Переговорной"
     duration = data.get("duration")
-    if tariff.purpose == "Переговорная" and duration:
-        amount = tariff.price * duration
+    if tariff_purpose == "Переговорная" and duration:
+        amount = tariff_price * duration
         if duration > 3:
-            additional_discount = 10  # Скидка 10% для бронирований более 3 часов
-            total_discount = min(
-                100, discount + additional_discount
-            )  # Суммируем скидки, но не более 100%
+            additional_discount = 10
+            total_discount = min(100, discount + additional_discount)
             amount *= 1 - total_discount / 100
             logger.info(
-                f"Применена скидка {total_discount}% (промокод: {discount}%, дополнительно: {additional_discount}%) для бронирования на {duration} ч, итоговая сумма: {amount:.2f}"
+                f"Применена скидка {total_discount}% (промокод: {discount}%, "
+                f"дополнительно: {additional_discount}%) для бронирования на {duration} ч, "
+                f"итоговая сумма: {amount:.2f}"
             )
         else:
             amount *= 1 - discount / 100
             logger.info(
-                f"Применена скидка {discount}% для бронирования на {duration} ч, итоговая сумма: {amount:.2f}"
+                f"Применена скидка {discount}% для бронирования на {duration} ч, "
+                f"итоговая сумма: {amount:.2f}"
             )
     else:
-        amount = tariff.price * (1 - discount / 100)
+        amount = tariff_price * (1 - discount / 100)
         logger.info(
-            f"Применена скидка {discount}% для тарифа {tariff.name}, итоговая сумма: {amount:.2f}"
+            f"Применена скидка {discount}% для тарифа {tariff_name}, "
+            f"итоговая сумма: {amount:.2f}"
         )
 
-    description = f"Бронь: {tariff.name}, дата: {data['visit_date']}" + (
-        f", время: {data['visit_time']}, длительность: {duration} ч, сумма: {amount:.2f} ₽"
-        if tariff.purpose == "Переговорная"
-        else f", сумма: {amount:.2f} ₽"
-    )
+    description = f"Бронь: {tariff_name}, дата: {data['visit_date']}"
+    if tariff_purpose == "Переговорная":
+        description += f", время: {data.get('visit_time')}, длительность: {duration} ч, сумма: {amount:.2f} ₽"
+    else:
+        description += f", сумма: {amount:.2f} ₽"
     if promocode_name:
         description += f", промокод: {promocode_name} ({discount}%)"
 
     await state.update_data(
         amount=amount,
-        promocode_id=promocode.id,
-        promocode=promocode,
+        promocode_id=promocode_id,
         promocode_name=promocode_name,
         discount=discount,
     )
 
-    if tariff.purpose == "Переговорная":
-        await state.update_data(tariff_purpose=tariff.purpose)
-        # Для "Переговорной" создаём бронь без оплаты
+    if tariff_purpose == "Переговорная":
         await handle_free_booking(message, state, bot=message.bot, paid=False)
     elif amount == 0:
-        # Для бесплатных бронирований (не "Переговорная") с нулевой суммой
         await handle_free_booking(message, state, bot=message.bot, paid=True)
     else:
-        # Для остальных тарифов создаём платёж
         payment_id, confirmation_url = await create_payment(description, amount)
         if not payment_id or not confirmation_url:
             await message.answer(
@@ -494,7 +502,8 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         task = asyncio.create_task(poll_payment_status(message, state, bot=message.bot))
         await state.update_data(payment_task=task)
         logger.info(
-            f"Создан платёж {payment_id} для пользователя {message.from_user.id}, сумма: {amount:.2f}"
+            f"Создан платёж {payment_id} для пользователя {message.from_user.id}, "
+            f"сумма: {amount:.2f}"
         )
 
 
@@ -511,16 +520,10 @@ def format_phone_for_rubitime(phone: str) -> str:
     if not phone or phone == "Не указано":
         return "Не указано"
 
-    # Удаляем все нецифровые символы
     digits = re.sub(r"[^0-9]", "", phone)
-
-    # Проверяем, начинается ли номер с +7 или 8
     if digits.startswith("8") or digits.startswith("+7"):
-        # Берем последние 10 цифр и добавляем +7
         if len(digits) >= 11:
             return f"+7{digits[-10:]}"
-
-    # Если номер не соответствует формату, возвращаем значение по умолчанию
     logger.warning(f"Некорректный формат номера телефона: {phone}")
     return "Не указано"
 
@@ -539,15 +542,16 @@ async def handle_free_booking(
     """
     data = await state.get_data()
     tariff_id = data["tariff_id"]
+    tariff_name = data["tariff_name"]
+    tariff_purpose = data["tariff_purpose"]
+    tariff_service_id = data["tariff_service_id"]
     visit_date = data["visit_date"]
     visit_time = data.get("visit_time")
     duration = data.get("duration")
     amount = data["amount"]
     promocode_id = data.get("promocode_id")
-    promocode = data.get("promocode")
     promocode_name = data.get("promocode_name", "-")
     discount = data.get("discount", 0)
-    tariff_purpose = data.get("tariff_purpose", "")
 
     booking, admin_message, session = create_booking(
         telegram_id=message.from_user.id,
@@ -575,43 +579,41 @@ async def handle_free_booking(
 
     try:
         user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-        tariffs = get_active_tariffs()
-        tariff = next((t for t in tariffs if t.id == tariff_id), None)
 
         # Уменьшаем количество использований промокода, если он применён
-        if promocode:
-            promocode.usage_quantity -= 1
-            session.add(promocode)
-            logger.info(
-                f"Промокод {promocode_name} использован, осталось использований: {promocode.usage_quantity}"
-            )
+        if promocode_id:
+            promocode = session.query(Promocode).filter_by(id=promocode_id).first()
+            if promocode:
+                promocode.usage_quantity -= 1
+                session.add(promocode)
+                logger.info(
+                    f"Промокод {promocode_name} использован, "
+                    f"осталось использований: {promocode.usage_quantity}"
+                )
 
-        # Увеличиваем счетчик успешных бронирований для тарифов с назначением "Опенспейс"
-        if tariff.purpose == "Опенспейс":
+        # Увеличиваем счетчик успешных бронирований для тарифов "Опенспейс" при успешной брони
+        if tariff_purpose == "Опенспейс" and booking.confirmed:
             user.successful_bookings += 1
             logger.info(
-                f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} до {user.successful_bookings}"
+                f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} "
+                f"до {user.successful_bookings}"
             )
 
         session.commit()
 
         # Формируем дату и время для Rubitime
-        if tariff.purpose == "Переговорная" and visit_time and duration:
-            # Комбинируем дату и время для "Переговорной"
+        if tariff_purpose == "Переговорная" and visit_time and duration:
             rubitime_date = datetime.combine(visit_date, visit_time).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            rubitime_duration = duration * 60  # Преобразуем часы в минуты
+            rubitime_duration = duration * 60
         else:
-            # Для остальных тарифов используем фиксированное время
             rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
             rubitime_duration = None
 
-        # Форматируем номер телефона для Rubitime
         formatted_phone = format_phone_for_rubitime(user.phone or "Не указано")
-        # Формируем параметры для Rubitime
         rubitime_params = {
-            "service_id": tariff.service_id,
+            "service_id": tariff_service_id,
             "name": user.full_name or "Не указано",
             "email": user.email or "Не указано",
             "phone": formatted_phone,
@@ -629,34 +631,31 @@ async def handle_free_booking(
             booking.rubitime_id = rubitime_id
             session.commit()
             logger.info(
-                f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, duration={rubitime_duration}, price={amount}"
+                f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, "
+                f"duration={rubitime_duration}, price={amount}"
             )
 
         await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+        response_text = (
+            f"Бронь создана!\n" f"Тариф: {tariff_name}\n" f"Дата: {visit_date}\n"
+        )
+        if duration:
+            response_text += f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
+        if promocode_name and promocode_name != "-":
+            response_text += f"Промокод: {promocode_name} (-{discount}%)\n"
+        response_text += f"Сумма: {amount:.2f} ₽\n"
+        response_text += (
+            "Ожидайте подтверждения."
+            if tariff_purpose == "Переговорная"
+            else "Бронь подтверждена."
+        )
         await message.answer(
-            f"Бронь создана!\n"
-            f"Тариф: {tariff.name}\n"
-            f"Дата: {visit_date}\n"
-            + (
-                f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
-                if duration
-                else ""
-            )
-            + (
-                f"Промокод: {promocode_name} (-{discount}%)\n"
-                if promocode_name and promocode_name != "-"
-                else ""
-            )
-            + f"Сумма: {amount:.2f} ₽\n"
-            + (
-                f"Ожидайте подтверждения."
-                if tariff.purpose == "Переговорная"
-                else "Бронь подтверждена."
-            ),
+            response_text,
             reply_markup=create_user_keyboard(),
         )
         logger.info(
-            f"Бронь создана для пользователя {message.from_user.id}, ID брони {booking.id}, paid={paid}, amount={amount}"
+            f"Бронь создана для пользователя {message.from_user.id}, "
+            f"ID брони {booking.id}, paid={paid}, amount={amount}"
         )
     except Exception as e:
         logger.error(f"Ошибка при обработке брони: {str(e)}")
@@ -684,17 +683,19 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
     payment_id = data["payment_id"]
     payment_message_id = data["payment_message_id"]
     tariff_id = data["tariff_id"]
+    tariff_name = data["tariff_name"]
+    tariff_purpose = data["tariff_purpose"]
+    tariff_service_id = data["tariff_service_id"]
     visit_date = data["visit_date"]
     visit_time = data.get("visit_time")
     duration = data.get("duration")
     amount = data["amount"]
     promocode_id = data.get("promocode_id")
-    promocode = data.get("promocode")
     promocode_name = data.get("promocode_name", "-")
     discount = data.get("discount", 0)
 
-    max_attempts = 60  # 5 минут (60 * 5 сек)
-    delay = 5  # Секунды между попытками
+    max_attempts = 60
+    delay = 5
 
     for _ in range(max_attempts):
         status = await check_payment_status(payment_id)
@@ -708,7 +709,7 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 promocode_id=promocode_id,
                 amount=amount,
                 paid=True,
-                confirmed=True if duration is None else False,
+                confirmed=(True if duration is None else False),
                 payment_id=payment_id,
             )
             if not booking:
@@ -732,43 +733,43 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                     .filter_by(telegram_id=message.from_user.id)
                     .first()
                 )
-                tariffs = get_active_tariffs()
-                tariff = next((t for t in tariffs if t.id == tariff_id), None)
 
                 # Уменьшаем количество использований промокода, если он применён
-                if promocode:
-                    promocode.usage_quantity -= 1
-                    session.add(promocode)
-                    logger.info(
-                        f"Промокод {promocode_name} использован, осталось использований: {promocode.usage_quantity}"
+                if promocode_id:
+                    promocode = (
+                        session.query(Promocode).filter_by(id=promocode_id).first()
                     )
+                    if promocode:
+                        promocode.usage_quantity -= 1
+                        session.add(promocode)
+                        logger.info(
+                            f"Промокод {promocode_name} использован, "
+                            f"осталось использований: {promocode.usage_quantity}"
+                        )
 
-                # Увеличиваем счетчик успешных бронирований для тарифов с назначением "Опенспейс"
-                if tariff.purpose == "Опенспейс":
+                # Увеличиваем счетчик успешных бронирований для тарифов "Опенспейс" при успешной брони
+                if tariff_purpose == "Опенспейс" and booking.confirmed:
                     user.successful_bookings += 1
                     logger.info(
-                        f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} до {user.successful_bookings}"
+                        f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} "
+                        f"до {user.successful_bookings}"
                     )
 
                 session.commit()
 
                 # Формируем дату и время для Rubitime
-                if tariff.purpose == "Переговорная" and visit_time and duration:
-                    # Комбинируем дату и время для "Переговорной"
+                if tariff_purpose == "Переговорная" and visit_time and duration:
                     rubitime_date = datetime.combine(visit_date, visit_time).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-                    rubitime_duration = duration * 60  # Преобразуем часы в минуты
+                    rubitime_duration = duration * 60
                 else:
-                    # Для остальных тарифов используем фиксированное время
                     rubitime_date = visit_date.strftime("%Y-%m-%d") + " 09:00:00"
                     rubitime_duration = None
 
-                # Форматируем номер телефона для Rubitime
                 formatted_phone = format_phone_for_rubitime(user.phone or "Не указано")
-                # Формируем параметры для Rubitime
                 rubitime_params = {
-                    "service_id": tariff.service_id,
+                    "service_id": tariff_service_id,
                     "name": user.full_name or "Не указано",
                     "email": user.email or "Не указано",
                     "phone": formatted_phone,
@@ -786,42 +787,43 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                     booking.rubitime_id = rubitime_id
                     session.commit()
                     logger.info(
-                        f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, duration={rubitime_duration}, price={amount}"
+                        f"Запись в Rubitime создана: ID {rubitime_id}, date={rubitime_date}, "
+                        f"duration={rubitime_duration}, price={amount}"
                     )
 
                 await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
-                await bot.edit_message_text(
-                    text=f"Бронь создана!\n"
-                    f"Тариф: {tariff.name}\n"
+                response_text = (
+                    f"Бронь создана!\n"
+                    f"Тариф: {tariff_name}\n"
                     f"Дата: {visit_date}\n"
-                    + (
+                )
+                if duration:
+                    response_text += (
                         f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
-                        if duration
-                        else ""
                     )
-                    + (
-                        f"Промокод: {promocode_name} (-{discount}%)\n"
-                        if promocode_name and promocode_name != "-"
-                        else ""
-                    )
-                    + f"Сумма: {amount:.2f} ₽\n"
-                    + (
-                        f"Ожидайте подтверждения."
-                        if tariff.purpose == "Переговорная"
-                        else "Бронь подтверждена."
-                    ),
+                if promocode_name and promocode_name != "-":
+                    response_text += f"Промокод: {promocode_name} (-{discount}%)\n"
+                response_text += f"Сумма: {amount:.2f} ₽\n"
+                response_text += (
+                    "Ожидайте подтверждения."
+                    if tariff_purpose == "Переговорная"
+                    else "Бронь подтверждена."
+                )
+                await bot.edit_message_text(
+                    text=response_text,
                     chat_id=message.chat.id,
                     message_id=payment_message_id,
                     reply_markup=create_user_keyboard(),
                 )
                 logger.info(
-                    f"Бронь создана после оплаты для пользователя {message.from_user.id}, ID брони {booking.id}, amount={amount}"
+                    f"Бронь создана после оплаты для пользователя {message.from_user.id}, "
+                    f"ID брони {booking.id}, amount={amount}"
                 )
             except Exception as e:
                 logger.error(f"Ошибка после успешной оплаты: {str(e)}")
                 session.rollback()
                 await bot.edit_message_text(
-                    text="Ошибка при создания брони. Попробуйте позже.",
+                    text="Ошибка при создании брони. Попробуйте позже.",
                     chat_id=message.chat.id,
                     message_id=payment_message_id,
                     reply_markup=create_user_keyboard(),
@@ -874,7 +876,6 @@ async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> No
         try:
             status = await check_payment_status(payment_id)
             if status == "succeeded":
-                # Платёж успешен, выполняем возврат
                 refund = Refund.create(
                     {
                         "amount": {
@@ -889,7 +890,6 @@ async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> No
                     f"Возврат создан для платежа {payment_id}, refund_id={refund.id}"
                 )
             elif status == "pending":
-                # Платёж в ожидании, пытаемся отменить
                 Payment.cancel(payment_id)
                 logger.info(f"Платёж {payment_id} отменён в YooKassa")
             else:
