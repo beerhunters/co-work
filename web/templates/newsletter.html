@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Рассылка{% endblock %}
+{% block content_title %}Создание рассылки{% endblock %}
+{% block content %}
+<style>
+    .ql-container {
+        min-height: 200px;
+        border-radius: 0 0 8px 8px;
+        border: 1px solid var(--border-color);
+    }
+    .ql-toolbar {
+        border-radius: 8px 8px 0 0;
+        border: 1px solid var(--border-color);
+        background: #fff;
+    }
+    .media-preview img, .media-preview video {
+        max-width: 150px;
+        max-height: 150px;
+        margin: 0.5rem;
+        border-radius: 8px;
+    }
+    .table-container {
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 1rem;
+    }
+</style>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Новая рассылка</h3>
+    </div>
+    <div class="card-body">
+        <form id="newsletterForm" enctype="multipart/form-data">
+            <!-- Выбор получателей -->
+            <div class="mb-3">
+                <label class="form-label">Получатели</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="recipient_type" id="allUsers" value="all" checked>
+                    <label class="form-check-label" for="allUsers">Все пользователи</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="recipient_type" id="selectedUsers" value="selected">
+                    <label class="form-check-label" for="selectedUsers">Выбранные пользователи</label>
+                </div>
+                <div id="usersTableContainer" class="table-container" style="display: none;">
+                    <table class="table table-bordered table-hover" id="usersTable">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAllUsers"></th>
+                                <th>ID</th>
+                                <th>ФИО</th>
+                                <th>Телефон</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td><input type="checkbox" name="selected_users" value="{{ user.id }}"></td>
+                                <td>{{ user.id }}</td>
+                                <td>{{ user.full_name or 'Не указано' }}</td>
+                                <td>{{ user.phone or 'Не указано' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4">Нет зарегистрированных пользователей</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Текстовое поле с редактором -->
+            <div class="mb-3">
+                <label for="message" class="form-label">Сообщение</label>
+                <div id="editor"></div>
+                <input type="hidden" name="message" id="message">
+            </div>
+
+            <!-- Загрузка медиа -->
+            <div class="mb-3">
+                <label for="media" class="form-label">Прикрепить медиа (до 5 файлов, фото или видео)</label>
+                <input type="file" class="form-control" id="media" name="media" accept="image/*,video/*" multiple>
+                <div class="media-preview mt-2" id="mediaPreview"></div>
+            </div>
+
+            <!-- Кнопка отправки -->
+            <button type="submit" class="btn btn-primary">Отправить рассылку</button>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация Quill
+    const quill = new Quill('#editor', {
+        theme: 'snow',
+        modules: {
+            toolbar: [
+                ['bold', 'italic', 'underline'],
+                ['link'],
+                [{'list': 'ordered'}, {'list': 'bullet'}],
+                ['clean']
+            ]
+        }
+    });
+
+    // Функция для преобразования HTML в Telegram-совместимый формат
+    function convertToTelegramHTML(html) {
+        // Создаем временный контейнер для парсинга HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        let result = '';
+
+        // Рекурсивная функция для обработки узлов
+        function processNode(node, listPrefix = '', isOrdered = false, level = 0) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                return node.textContent.trim();
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) {
+                return '';
+            }
+
+            let output = '';
+            const tag = node.tagName.toLowerCase();
+            const childNodes = Array.from(node.childNodes);
+
+            if (tag === 'p') {
+                // Заменяем <p> на перенос строки
+                const content = childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('');
+                output += content + (content ? '\n' : '');
+            } else if (tag === 'b' || tag === 'strong') {
+                output += `<b>${childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('')}</b>`;
+            } else if (tag === 'i' || tag === 'em') {
+                output += `<i>${childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('')}</i>`;
+            } else if (tag === 'u') {
+                output += `<u>${childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('')}</u>`;
+            } else if (tag === 'a' && node.hasAttribute('href')) {
+                output += `<a href="${node.getAttribute('href')}">${childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('')}</a>`;
+            } else if (tag === 'ul') {
+                // Обработка неупорядоченного списка
+                childNodes.forEach(child => {
+                    output += processNode(child, '- ', false, level + 1);
+                });
+            } else if (tag === 'ol') {
+                // Обработка упорядоченного списка
+                let index = 1;
+                childNodes.forEach(child => {
+                    output += processNode(child, `${index}. `, true, level + 1);
+                    index++;
+                });
+            } else if (tag === 'li') {
+                // Обработка элемента списка
+                const content = childNodes.map(child => processNode(child, '', isOrdered, level)).join('');
+                output += `${listPrefix}${content}\n`;
+            } else {
+                // Обработка остальных тегов (рекурсивно для вложенных)
+                output += childNodes.map(child => processNode(child, listPrefix, isOrdered, level)).join('');
+            }
+
+            return output;
+        }
+
+        // Обрабатываем все дочерние узлы body
+        const bodyNodes = Array.from(doc.body.childNodes);
+        result = bodyNodes.map(node => processNode(node)).join('');
+
+        // Удаляем лишние переносы строк в конце
+        return result.trim();
+    }
+
+    // Обновление скрытого поля
+    quill.on('text-change', function() {
+        const html = quill.root.innerHTML;
+        const telegramHTML = convertToTelegramHTML(html);
+        document.getElementById('message').value = telegramHTML;
+    });
+
+    // Переключение видимости таблицы пользователей
+    const allUsersRadio = document.getElementById('allUsers');
+    const selectedUsersRadio = document.getElementById('selectedUsers');
+    const usersTableContainer = document.getElementById('usersTableContainer');
+
+    function toggleUsersTable() {
+        if (selectedUsersRadio.checked) {
+            usersTableContainer.style.display = 'block';
+        } else {
+            usersTableContainer.style.display = 'none';
+        }
+    }
+
+    allUsersRadio.addEventListener('change', toggleUsersTable);
+    selectedUsersRadio.addEventListener('change', toggleUsersTable);
+
+    // Выбор всех пользователей
+    const selectAllCheckbox = document.getElementById('selectAllUsers');
+    selectAllCheckbox.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('input[name="selected_users"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+    });
+
+    // Предпросмотр медиа
+    const mediaInput = document.getElementById('media');
+    const mediaPreview = document.getElementById('mediaPreview');
+    mediaInput.addEventListener('change', function() {
+        mediaPreview.innerHTML = '';
+        const files = this.files;
+        if (files.length > 5) {
+            alert('Максимум 5 файлов');
+            this.value = '';
+            return;
+        }
+        for (let file of files) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const element = file.type.startsWith('image/') ?
+                    `<img src="${e.target.result}" alt="preview">` :
+                    `<video src="${e.target.result}" controls></video>`;
+                mediaPreview.insertAdjacentHTML('beforeend', element);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Отправка формы через AJAX
+    const form = document.getElementById('newsletterForm');
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const recipientType = formData.get('recipient_type');
+        const selectedUsers = formData.getAll('selected_users');
+
+        fetch('/newsletter', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            showAlert(data.status, data.message);
+            if (data.status === 'success') {
+                // Очистка формы
+                form.reset();
+                quill.setContents([]);
+                mediaPreview.innerHTML = '';
+                // Восстановление состояния радиокнопок и таблицы
+                if (recipientType === 'selected') {
+                    selectedUsersRadio.checked = true;
+                    usersTableContainer.style.display = 'block';
+                    // Восстановить выбранных пользователей
+                    const checkboxes = document.querySelectorAll('input[name="selected_users"]');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = selectedUsers.includes(checkbox.value);
+                    });
+                } else {
+                    allUsersRadio.checked = true;
+                    usersTableContainer.style.display = 'none';
+                }
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Ошибка при отправке рассылки');
+            console.error('Error:', error);
+        });
+    });
+
+    // Инициализация состояния таблицы при загрузке
+    toggleUsersTable();
+});
+</script>
+{% endblock %}

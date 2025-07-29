@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>История рассылок</h1>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Сообщение</th>
+            <th>Получателей</th>
+            <th>Дата</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for newsletter in newsletters %}
+        <tr>
+            <td>{{ newsletter.id }}</td>
+            <td>{{ newsletter.message | safe }}</td>
+            <td>{{ newsletter.recipient_count }}</td>
+            <td>{{ newsletter.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

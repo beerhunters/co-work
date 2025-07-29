@@ -1,16 +1,37 @@
+import re
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import pytz
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required
 from sqlalchemy import desc
 from werkzeug.security import check_password_hash
+from werkzeug.utils import secure_filename
 from aiogram import Bot
+from aiogram.types import InputFile, InputMediaPhoto, InputMediaVideo
+from aiogram.utils.media_group import MediaGroupBuilder
+from aiogram.types import FSInputFile
+from aiogram.types import (
+    FSInputFile,
+    InputMediaPhoto,
+    InputMediaVideo,
+    InputMediaDocument,
+)
+from aiogram.enums import ParseMode
+import asyncio
 import os
 import asyncio
 
-from models.models import User, Admin, Notification, Tariff, Booking, Promocode
+from models.models import (
+    User,
+    Admin,
+    Notification,
+    Tariff,
+    Booking,
+    Promocode,
+    Newsletter,
+)
 from utils.bot_instance import get_bot
 from utils.logger import setup_logger
 from .app import db
@@ -23,9 +44,64 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Инициализация бота для отправки сообщений
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 
+# Папка для временного хранения медиафайлов
+UPLOAD_FOLDER = "uploads/newsletter"
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "mp4", "mov"}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 МБ
+
+# Поддерживаемые Telegram HTML-теги
+ALLOWED_HTML_TAGS = {
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "s",
+    "a",
+    "code",
+    "pre",
+    "tg-spoiler",
+    "tg-emoji",
+    "blockquote",
+}
+
+
+def clean_html(text: str) -> str:
+    """
+    Очищает HTML-текст от неподдерживаемых Telegram тегов, сохраняя разрешенные теги и переносы строк.
+
+    Args:
+        text: Входной HTML-текст.
+
+    Returns:
+        Очищенный текст с поддерживаемыми тегами и переносами строк.
+    """
+    # Заменяем <p> на \n
+    text = re.sub(r"<p\s*[^>]*>|</p>", "\n", text, flags=re.IGNORECASE)
+
+    # Разрешенные теги в формате regex
+    allowed_tags_pattern = "|".join(rf"(?:{tag})" for tag in ALLOWED_HTML_TAGS)
+    # Удаляем все HTML-теги, кроме разрешенных
+    cleaned_text = re.sub(
+        rf"<(?!/?({allowed_tags_pattern})(?: [^>]*)?>).*?>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Удаляем лишние пробелы в начале и конце строк, сохраняя \n
+    lines = cleaned_text.split("\n")
+    cleaned_lines = [line.strip() for line in lines if line.strip()]
+    return "\n".join(cleaned_lines)
+
 
 def init_routes(app: Flask) -> None:
     """Инициализация маршрутов приложения."""
+
+    def allowed_file(filename: str) -> bool:
+        """Проверяет, допустимое ли расширение файла."""
+        return (
+            "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+        )
 
     def get_unread_notifications_count() -> int:
         """Получение количества непрочитанных уведомлений."""
@@ -825,3 +901,276 @@ def init_routes(app: Flask) -> None:
         except Exception as e:
             logger.error(f"Ошибка отладки БД: {str(e)}")
             return jsonify({"error": "Ошибка сервера"}), 500
+
+    @app.route("/newsletter", methods=["GET", "POST"])
+    @login_required
+    def newsletter() -> Any:
+        """
+        Обрабатывает страницу рассылки и отправку сообщений.
+
+        GET: Отображает страницу с формой рассылки.
+        POST: Обрабатывает отправку рассылки с текстом и медиафайлами.
+
+        Returns:
+            GET: Шаблон страницы рассылки.
+            POST: JSON-ответ с результатом отправки.
+        """
+        try:
+            if request.method == "GET":
+                users = db.session.query(User).order_by(User.id).all()
+                unread_notifications = get_unread_notifications_count()
+                recent_notifications = get_recent_notifications()
+                logger.info("Отображена страница рассылки")
+                return render_template(
+                    "newsletter.html",
+                    users=users,
+                    unread_notifications=unread_notifications,
+                    recent_notifications=recent_notifications,
+                )
+
+            # Обработка POST-запроса
+            message: str = request.form.get("message")
+            recipient_type: str = request.form.get("recipient_type")
+            selected_users: List[str] = request.form.getlist("selected_users")
+
+            if not message:
+                logger.warning("Попытка отправки рассылки с пустым сообщением")
+                return (
+                    jsonify(
+                        {"status": "error", "message": "Сообщение не может быть пустым"}
+                    ),
+                    400,
+                )
+
+            # Очистка HTML от неподдерживаемых тегов
+            cleaned_message = clean_html(message)
+            if not cleaned_message:
+                logger.warning("Очищенный текст сообщения пустой")
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Очищенный текст сообщения пустой",
+                        }
+                    ),
+                    400,
+                )
+
+            # Получение пользователей
+            users: List[User] = []
+            if recipient_type == "all":
+                users = db.session.query(User).filter(User.telegram_id != None).all()
+            else:
+                if not selected_users:
+                    logger.warning(
+                        "Попытка отправки рассылки без выбранных пользователей"
+                    )
+                    return (
+                        jsonify(
+                            {"status": "error", "message": "Не выбраны пользователи"}
+                        ),
+                        400,
+                    )
+                users = (
+                    db.session.query(User)
+                    .filter(User.id.in_(selected_users), User.telegram_id != None)
+                    .all()
+                )
+
+            if not users:
+                logger.warning("Нет пользователей для рассылки")
+                return (
+                    jsonify(
+                        {"status": "error", "message": "Нет пользователей для рассылки"}
+                    ),
+                    400,
+                )
+
+            # Обработка медиафайлов
+            media_files = request.files.getlist("media")
+            saved_files = []
+            if media_files and media_files[0].filename:
+                if len(media_files) > 5:
+                    logger.warning(
+                        f"Попытка загрузки {len(media_files)} файлов, максимум 5"
+                    )
+                    return (
+                        jsonify({"status": "error", "message": "Максимум 5 файлов"}),
+                        400,
+                    )
+
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+                for file in media_files:
+                    if file and allowed_file(file.filename):
+                        # Проверка размера файла
+                        file.seek(0, os.SEEK_END)
+                        file_size = file.tell()
+                        file.seek(0)
+                        if file_size > MAX_FILE_SIZE:
+                            logger.warning(
+                                f"Файл {file.filename} превышает допустимый размер 50 МБ"
+                            )
+                            return (
+                                jsonify(
+                                    {
+                                        "status": "error",
+                                        "message": f"Файл {file.filename} превышает 50 МБ",
+                                    }
+                                ),
+                                400,
+                            )
+                        filename = secure_filename(file.filename)
+                        file_path = os.path.join(UPLOAD_FOLDER, filename)
+                        file.save(file_path)
+                        saved_files.append(file_path)
+                    else:
+                        logger.warning(f"Недопустимый файл: {file.filename}")
+                        return (
+                            jsonify(
+                                {
+                                    "status": "error",
+                                    "message": f"Недопустимый файл: {file.filename}",
+                                }
+                            ),
+                            400,
+                        )
+
+            # Отправка сообщений
+            async def send_newsletter():
+                failed_users = []
+                for user in users:
+                    try:
+                        if saved_files:
+                            if len(saved_files) == 1 and saved_files[0].rsplit(".", 1)[
+                                1
+                            ].lower() in {"png", "jpg", "jpeg", "gif"}:
+                                # Отправка одного фото
+                                photo = FSInputFile(path=saved_files[0])
+                                await bot.send_photo(
+                                    chat_id=user.telegram_id,
+                                    photo=photo,
+                                    caption=cleaned_message,
+                                    parse_mode="HTML",
+                                )
+                            elif len(saved_files) == 1 and saved_files[0].rsplit(
+                                ".", 1
+                            )[1].lower() in {"mp4", "mov"}:
+                                # Отправка видео
+                                video = FSInputFile(path=saved_files[0])
+                                await bot.send_video(
+                                    chat_id=user.telegram_id,
+                                    video=video,
+                                    caption=cleaned_message,
+                                    parse_mode="HTML",
+                                )
+                            else:
+                                # Отправка фото как медиа-группы
+                                media_group = MediaGroupBuilder()
+                                for index, file_path in enumerate(saved_files):
+                                    media_group.add_photo(
+                                        media=FSInputFile(path=file_path),
+                                        caption=(
+                                            cleaned_message
+                                            if index == 0 and cleaned_message
+                                            else None
+                                        ),
+                                        parse_mode=(
+                                            "HTML"
+                                            if index == 0 and cleaned_message
+                                            else None
+                                        ),
+                                    )
+                                await bot.send_media_group(
+                                    chat_id=user.telegram_id, media=media_group.build()
+                                )
+                        else:
+                            # Отправка только текста
+                            await bot.send_message(
+                                chat_id=user.telegram_id,
+                                text=cleaned_message,
+                                parse_mode="HTML",
+                            )
+                        logger.info(
+                            f"Сообщение отправлено пользователю {user.telegram_id}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Ошибка отправки пользователю {user.telegram_id}: {str(e)}"
+                        )
+                        if "blocked by user" in str(e).lower():
+                            logger.warning(
+                                f"Пользователь {user.telegram_id} заблокировал бота"
+                            )
+                        failed_users.append(user.telegram_id)
+
+                return failed_users
+
+            # Запуск асинхронной отправки с использованием текущего событийного цикла
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            failed_users = loop.run_until_complete(send_newsletter())
+
+            # Сохранение истории рассылки
+            try:
+                newsletter = Newsletter(
+                    message=cleaned_message, recipient_count=len(users)
+                )
+                db.session.add(newsletter)
+                db.session.commit()
+                logger.info("История рассылки сохранена в БД")
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Ошибка сохранения истории рассылки: {str(e)}")
+
+            # Очистка временных файлов
+            for file_path in saved_files:
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Удалён временный файл: {file_path}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления файла {file_path}: {str(e)}")
+
+            # Формирование ответа
+            if failed_users:
+                failed_count = len(failed_users)
+                flash(
+                    f"Не удалось отправить сообщение {failed_count} пользователям",
+                    "warning",
+                )
+                logger.warning(
+                    f"Не удалось отправить сообщение {failed_count} пользователям"
+                )
+                return jsonify(
+                    {
+                        "status": "warning",
+                        "message": f"Рассылка отправлена, но не доставлена {failed_count} пользователям",
+                    }
+                )
+            else:
+                flash("Рассылка успешно отправлена всем пользователям", "success")
+                logger.info(f"Рассылка успешно отправлена {len(users)} пользователям")
+                return jsonify(
+                    {"status": "success", "message": "Рассылка успешно отправлена"}
+                )
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Ошибка при обработке рассылки: {str(e)}")
+            return jsonify({"status": "error", "message": f"Ошибка: {str(e)}"}), 500
+
+    @app.route("/newsletters")
+    @login_required
+    def newsletters():
+        newsletters = (
+            db.session.query(Newsletter).order_by(desc(Newsletter.created_at)).all()
+        )
+        unread_notifications = get_unread_notifications_count()
+        recent_notifications = get_recent_notifications()
+        return render_template(
+            "newsletters.html",
+            newsletters=newsletters,
+            unread_notifications=unread_notifications,
+            recent_notifications=recent_notifications,
+        )

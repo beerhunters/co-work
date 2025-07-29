@@ -126,6 +126,14 @@ class Booking(Base):
     )  # Связь с моделью Promocode
 
 
+class Newsletter(Base):
+    __tablename__ = "newsletters"
+    id = Column(Integer, primary_key=True)
+    message = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.now(MOSCOW_TZ))
+    recipient_count = Column(Integer, nullable=False)
+
+
 class Notification(Base):
     """Модель уведомления."""
 
