@@ -6,6 +6,7 @@ from typing import Optional
 
 import pytz
 from aiogram import Router, Bot, Dispatcher, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -142,7 +143,12 @@ async def start_booking(
             f"Пользователь {callback_query.from_user.id} попытался забронировать, "
             f"но нет активных тарифов"
         )
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except TelegramBadRequest as e:
+            logger.warning(
+                f"Не удалось удалить сообщение для пользователя {callback_query.from_user.id}: {str(e)}"
+            )
         await callback_query.answer()
         return
 
@@ -154,7 +160,12 @@ async def start_booking(
     logger.info(
         f"Пользователь {callback_query.from_user.id} начал процесс бронирования"
     )
-    await callback_query.message.delete()
+    try:
+        await callback_query.message.delete()
+    except TelegramBadRequest as e:
+        logger.warning(
+            f"Не удалось удалить сообщение для пользователя {callback_query.from_user.id}: {str(e)}"
+        )
     await callback_query.answer()
 
 
