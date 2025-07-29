@@ -51,9 +51,25 @@
             <div class="form-group">
                 <label>Service ID</label>
                 {% if edit or new %}
-                <input type="number" class="form-control" name="service_id" value="{{ tariff.service_id or '' }}">
+                <select class="form-control" name="service_id">
+                    <option value="" {% if not tariff.service_id %}selected{% endif %}>Не указано</option>
+                    <option value="49414" {% if tariff.service_id == 49414 %}selected{% endif %}>Полный день - 49414</option>
+                    <option value="47890" {% if tariff.service_id == 47890 %}selected{% endif %}>Тестовый день - 47890</option>
+                    <option value="50764" {% if tariff.service_id == 50764 %}selected{% endif %}>Амфитеатр - 50764</option>
+                    <option value="47900" {% if tariff.service_id == 47900 %}selected{% endif %}>Большая Переговорная - 47900</option>
+                    <option value="47892" {% if tariff.service_id == 47892 %}selected{% endif %}>Нефикс место на месяц - 47892</option>
+                    <option value="47894" {% if tariff.service_id == 47894 %}selected{% endif %}>Фикс место на месяц - 47894</option>
+                </select>
                 {% else %}
-                <p>{{ tariff.service_id or 'Не указано' }}</p>
+                <p>
+                    {% if tariff.service_id == 49414 %}Полный день - 49414
+                    {% elif tariff.service_id == 47890 %}Тестовый день - 47890
+                    {% elif tariff.service_id == 50764 %}Амфитеатр - 50764
+                    {% elif tariff.service_id == 47900 %}Большая Переговорная - 47900
+                    {% elif tariff.service_id == 47892 %}Нефикс место на месяц - 47892
+                    {% elif tariff.service_id == 47894 %}Фикс место на месяц - 47894
+                    {% else %}Не указано{% endif %}
+                </p>
                 {% endif %}
             </div>
             <div class="form-group">
