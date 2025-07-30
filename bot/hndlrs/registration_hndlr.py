@@ -11,7 +11,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
-from bot.config import create_user_keyboard, create_back_keyboard
+from bot.config import create_user_keyboard, create_back_keyboard, RULES
 from models.models import add_user, check_and_add_user
 from utils.logger import setup_logger
 
@@ -117,7 +117,7 @@ async def start_registration(callback_query: CallbackQuery, state: FSMContext) -
     """
     logger.info(f"Начало регистрации для пользователя {callback_query.from_user.id}")
     await callback_query.message.answer(
-        'Продолжая регистрацию, вы соглашаетесь с обработкой персональных данных и <a href="https://parta-works.ru/main_rules">правилами коворкинга</a>.',
+        f'Продолжая регистрацию, вы соглашаетесь с обработкой персональных данных и <a href="{RULES}">правилами коворкинга</a>.',
         reply_markup=create_agreement_keyboard(),
         parse_mode="HTML",
     )
@@ -168,7 +168,7 @@ async def handle_invalid_agreement(message: Message, state: FSMContext) -> None:
         f"Некорректный ввод на этапе согласия от пользователя {message.from_user.id}"
     )
     await message.answer(
-        'Пожалуйста, нажмите кнопку "Согласен" для продолжения регистрации. <a href="https://parta-works.ru/main_rules">Правила коворкинга</a>.',
+        f'Пожалуйста, нажмите кнопку "Согласен" для продолжения регистрации. <a href="{RULES}">Правила коворкинга</a>.',
         reply_markup=create_agreement_keyboard(),
         parse_mode="HTML",
     )

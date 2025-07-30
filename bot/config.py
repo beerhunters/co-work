@@ -24,6 +24,8 @@ RUBITIME_API_KEY = os.getenv("RUBITIME_API_KEY")
 RUBITIME_BASE_URL = "https://rubitime.ru/api2/"
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
+RULES = "https://parta-works.ru/main_rules"
+
 # btn_back = ⬅️ Назад
 # helpdesk_button = 🛠️ Helpdesk
 # register_guest_button = 👥 Регистрация гостя
