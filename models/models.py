@@ -27,7 +27,6 @@ logger = setup_logger(__name__)
 Base = declarative_base()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
-# Инициализация базы данных один раз при импорте модуля
 engine = create_engine(
     "sqlite:////data/coworking.db", connect_args={"check_same_thread": False}
 )
@@ -75,6 +74,7 @@ class User(Base):
     language_code = Column(String, default="ru")
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
+    avatar = Column(String, nullable=True)  # Путь к файлу аватара
 
 
 class Tariff(Base):
@@ -118,12 +118,9 @@ class Booking(Base):
     paid = Column(Boolean, default=False)
     rubitime_id = Column(String(100), nullable=True)
     confirmed = Column(Boolean, default=False)
-
-    user = relationship("User", backref="bookings")  # Связь с моделью User
-    tariff = relationship("Tariff", backref="bookings")  # Связь с моделью Tariff
-    promocode = relationship(
-        "Promocode", backref="promocodes"
-    )  # Связь с моделью Promocode
+    user = relationship("User", backref="bookings")
+    tariff = relationship("Tariff", backref="bookings")
+    promocode = relationship("Promocode", backref="promocodes")
 
 
 class Newsletter(Base):
@@ -146,8 +143,6 @@ class Notification(Base):
     )
     is_read = Column(Integer, default=0, nullable=False)
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
-
-    # Добавляем связи для удобства
     user = relationship("User", backref="notifications")
     booking = relationship("Booking", backref="notifications")
 
@@ -162,13 +157,7 @@ def init_db() -> None:
 
 
 def create_admin(admin_login: str, admin_password: str) -> None:
-    """
-    Создает или обновляет администратора в базе данных.
-
-    Args:
-        admin_login: Логин администратора.
-        admin_password: Пароль администратора.
-    """
+    """Создает или обновляет администратора в базе данных."""
     session = Session()
     try:
         admin = session.query(Admin).filter_by(login=admin_login).first()
@@ -215,18 +204,14 @@ def get_user_by_telegram_id(telegram_id) -> Optional[User]:
 def check_and_add_user(
     telegram_id: int, username: Optional[str] = None
 ) -> Tuple[Optional[User], bool]:
-    """
-    Проверяет, существует ли пользователь в БД, и добавляет его, если не существует.
-    """
+    """Проверяет, существует ли пользователь в БД, и добавляет его, если не существует."""
     session = Session()
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
-            # Проверяем, заполнены ли все данные
             is_complete = all([user.full_name, user.phone, user.email])
             return user, is_complete
         else:
-            # Создаем нового пользователя
             user = User(
                 telegram_id=telegram_id,
                 username=username,
@@ -251,10 +236,10 @@ def add_user(
     username: Optional[str] = None,
     reg_date: Optional[datetime] = None,
     agreed_to_terms: Optional[bool] = None,
+    avatar: Optional[str] = None,  # Добавляем параметр avatar
 ) -> None:
     """Добавление или обновление пользователя в БД и создание уведомления."""
     session = Session()
-
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
@@ -271,8 +256,10 @@ def add_user(
                 user.reg_date = reg_date
             if agreed_to_terms is not None:
                 user.agreed_to_terms = agreed_to_terms
+            if avatar is not None:
+                user.avatar = avatar
                 logger.debug(
-                    f"Флаг agreed_to_terms обновлён для пользователя {telegram_id}: {agreed_to_terms}"
+                    f"Обновлён аватар для пользователя {telegram_id}: {avatar}"
                 )
         else:
             logger.info(f"Создание нового пользователя {telegram_id}")
@@ -289,11 +276,10 @@ def add_user(
                 agreed_to_terms=(
                     agreed_to_terms if agreed_to_terms is not None else False
                 ),
+                avatar=avatar,
             )
             session.add(user)
-            session.flush()  # Получаем user.id до коммита
-
-        # Создаём уведомление при полной регистрации
+            session.flush()
         if full_name and phone and email:
             notification = Notification(
                 user_id=user.id,
@@ -317,12 +303,7 @@ def add_user(
 
 
 def get_active_tariffs() -> List[Tariff]:
-    """
-    Возвращает список активных тарифов из базы данных.
-
-    Returns:
-        List[Tariff]: Список активных тарифов.
-    """
+    """Возвращает список активных тарифов из базы данных."""
     session = Session()
     try:
         tariffs = session.query(Tariff).filter_by(is_active=True).all()
@@ -347,21 +328,7 @@ def create_booking(
     confirmed: Optional[bool] = False,
     payment_id: Optional[str] = None,
 ) -> Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]:
-    """
-    Создаёт запись бронирования и уведомление в базе данных.
-    Args:
-        telegram_id: Telegram ID пользователя.
-        tariff_id: ID тарифа.
-        visit_date: Дата визита.
-        visit_time: Время визита (для 'Переговорной').
-        duration: Продолжительность в часах (для 'Переговорной').
-        amount: Сумма бронирования.
-        paid: Флаг оплаты.
-        confirmed: Флаг подтверждения.
-        payment_id: ID платежа в YooKassa.
-    Returns:
-        Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]: Созданная бронь, сообщение для администратора и сессия или None, сообщение об ошибке и None.
-    """
+    """Создаёт запись бронирования и уведомление в базе данных."""
     session = Session()
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
@@ -369,13 +336,11 @@ def create_booking(
             logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
             session.close()
             return None, "Пользователь не найден", None
-
         tariff = session.query(Tariff).filter_by(id=tariff_id, is_active=True).first()
         if not tariff:
             logger.warning(f"Тариф с ID {tariff_id} не найден или не активен")
             session.close()
             return None, "Тариф не найден", None
-
         booking = Booking(
             user_id=user.id,
             tariff_id=tariff.id,
@@ -390,7 +355,6 @@ def create_booking(
         )
         session.add(booking)
         session.flush()
-
         notification = Notification(
             user_id=user.id,
             message=f"Новая бронь от {user.full_name or 'пользователя'}: тариф {tariff.name}, дата {visit_date}"
@@ -405,7 +369,6 @@ def create_booking(
         )
         session.add(notification)
         session.commit()
-
         admin_message = (
             f"Новая бронь!\n"
             f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"

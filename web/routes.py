@@ -1,27 +1,19 @@
+import asyncio
+import os
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import pytz
+from aiogram import Bot
+from aiogram.types import FSInputFile
+from aiogram.utils.media_group import MediaGroupBuilder
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
+from flask import send_from_directory, current_app
 from flask_login import login_user, logout_user, login_required
 from sqlalchemy import desc
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
-from aiogram import Bot
-from aiogram.types import InputFile, InputMediaPhoto, InputMediaVideo
-from aiogram.utils.media_group import MediaGroupBuilder
-from aiogram.types import FSInputFile
-from aiogram.types import (
-    FSInputFile,
-    InputMediaPhoto,
-    InputMediaVideo,
-    InputMediaDocument,
-)
-from aiogram.enums import ParseMode
-import asyncio
-import os
-import asyncio
 
 from models.models import (
     User,
@@ -37,19 +29,23 @@ from utils.logger import setup_logger
 from .app import db
 
 logger = setup_logger(__name__)
-
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Инициализация бота для отправки сообщений
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 
-# Папка для временного хранения медиафайлов
 UPLOAD_FOLDER = "uploads/newsletter"
+AVATAR_FOLDER = "static/avatars"  # Папка для хранения аватаров
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "mp4", "mov"}
+ALLOWED_AVATAR_EXTENSIONS = {
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+}  # Только изображения для аватаров
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 МБ
+MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 МБ для аватаров
 
-# Поддерживаемые Telegram HTML-теги
 ALLOWED_HTML_TAGS = {
     "b",
     "strong",
@@ -67,28 +63,15 @@ ALLOWED_HTML_TAGS = {
 
 
 def clean_html(text: str) -> str:
-    """
-    Очищает HTML-текст от неподдерживаемых Telegram тегов, сохраняя разрешенные теги и переносы строк.
-
-    Args:
-        text: Входной HTML-текст.
-
-    Returns:
-        Очищенный текст с поддерживаемыми тегами и переносами строк.
-    """
-    # Заменяем <p> на \n
+    """Очищает HTML-текст от неподдерживаемых Telegram тегов, сохраняя разрешенные теги и переносы строк."""
     text = re.sub(r"<p\s*[^>]*>|</p>", "\n", text, flags=re.IGNORECASE)
-
-    # Разрешенные теги в формате regex
     allowed_tags_pattern = "|".join(rf"(?:{tag})" for tag in ALLOWED_HTML_TAGS)
-    # Удаляем все HTML-теги, кроме разрешенных
     cleaned_text = re.sub(
         rf"<(?!/?({allowed_tags_pattern})(?: [^>]*)?>).*?>",
         "",
         text,
         flags=re.IGNORECASE,
     )
-    # Удаляем лишние пробелы в начале и конце строк, сохраняя \n
     lines = cleaned_text.split("\n")
     cleaned_lines = [line.strip() for line in lines if line.strip()]
     return "\n".join(cleaned_lines)
@@ -101,6 +84,13 @@ def init_routes(app: Flask) -> None:
         """Проверяет, допустимое ли расширение файла."""
         return (
             "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+        )
+
+    def allowed_avatar_file(filename: str) -> bool:
+        """Проверяет, допустимое ли расширение для аватара."""
+        return (
+            "." in filename
+            and filename.rsplit(".", 1)[1].lower() in ALLOWED_AVATAR_EXTENSIONS
         )
 
     def get_unread_notifications_count() -> int:
@@ -117,21 +107,16 @@ def init_routes(app: Flask) -> None:
             .limit(limit)
             .all()
         )
-
         result = []
         for n in notifications:
-            # Определяем тип уведомления и URL для перехода
             notification_type = "general"
             target_url = url_for("notifications")
-
             if "Новый пользователь:" in n.message:
                 notification_type = "user"
-                # Извлекаем user_id из notification.user_id
                 target_url = url_for("user_detail", user_id=n.user_id)
             elif "Новая бронь" in n.message and n.booking_id:
                 notification_type = "booking"
                 target_url = url_for("booking_detail", booking_id=n.booking_id)
-
             result.append(
                 {
                     "id": n.id,
@@ -146,7 +131,6 @@ def init_routes(app: Flask) -> None:
                     "target_url": target_url,
                 }
             )
-
         return result
 
     @app.route("/login", methods=["GET", "POST"])
@@ -190,7 +174,7 @@ def init_routes(app: Flask) -> None:
     def users():
         """Отображение списка пользователей с пагинацией."""
         page = request.args.get("page", 1, type=int)
-        per_page = 10  # Количество записей на странице
+        per_page = 10
         users_pagination = (
             db.session.query(User)
             .order_by(User.reg_date.desc())
@@ -206,6 +190,59 @@ def init_routes(app: Flask) -> None:
             recent_notifications=recent_notifications,
         )
 
+    def custom_secure_filename(filename: str) -> str:
+        """Очищает имя файла, сохраняя кириллические символы и заменяя недопустимые на подчеркивание."""
+        filename = re.sub(r"[^\w\-\.\u0400-\u04FF]", "_", filename)
+        filename = re.sub(r"_+", "_", filename)
+        filename = filename.strip("_")
+        return filename or "unnamed"
+
+    def check_file_exists(filename: Optional[str]) -> bool:
+        """Проверяет, существует ли файл по указанному пути."""
+        if not filename:
+            logger.info("check_file_exists: Пустое имя файла")
+            return False
+        file_name = filename.split("/")[-1]
+        file_path = os.path.join(
+            "/app/static", "avatars", file_name
+        )  # Явно используем /app/static
+        logger.info(f"check_file_exists: Текущая директория: {os.getcwd()}")
+        logger.info(f"check_file_exists: Проверка пути {file_path}")
+        logger.info(f"check_file_exists: static_folder: {current_app.static_folder}")
+        logger.info(
+            f"check_file_exists: Вызвано из шаблона: {current_app.jinja_env.filters.get('is_file') is not None}"
+        )
+        try:
+            exists = os.path.exists(file_path)
+            readable = os.access(file_path, os.R_OK)
+            logger.info(
+                f"check_file_exists: os.path.exists: {exists}, os.access: {readable}"
+            )
+            if exists:
+                stat = os.stat(file_path)
+                logger.info(
+                    f"check_file_exists: os.stat: {stat.st_size} bytes, mode: {oct(stat.st_mode)}"
+                )
+            else:
+                logger.warning(f"check_file_exists: Файл {file_path} не существует")
+            if exists and not readable:
+                logger.warning(
+                    f"check_file_exists: Файл {file_path} существует, но не читаем"
+                )
+            return exists and readable
+        except Exception as e:
+            logger.error(
+                f"check_file_exists: Ошибка при проверке файла {file_path}: {str(e)}"
+            )
+            return False
+
+    @app.template_filter("is_file")
+    def is_file(filename: Optional[str]) -> bool:
+        """Фильтр для проверки существования файла."""
+        result = check_file_exists(filename)
+        logger.info(f"is_file: Результат для {filename}: {result}")
+        return result
+
     @app.route("/user/<int:user_id>")
     @login_required
     def user_detail(user_id: int):
@@ -214,6 +251,16 @@ def init_routes(app: Flask) -> None:
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
+        # Проверяем существование файла аватара
+        if user.avatar:
+            if not check_file_exists(user.avatar):
+                logger.warning(
+                    f"Аватар пользователя {user_id} не найден или не читаем: {user.avatar}"
+                )
+                user.avatar = None
+                db.session.commit()
+            else:
+                logger.info(f"Результат check_file_exists для {user.avatar}: True")
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
@@ -233,13 +280,73 @@ def init_routes(app: Flask) -> None:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
         if request.method == "POST":
-            user.full_name = request.form.get("full_name")
-            user.phone = request.form.get("phone")
-            user.email = request.form.get("email")
-            user.username = request.form.get("username")
-            user.successful_bookings = request.form.get("successful_bookings")
-            user.language_code = request.form.get("language_code", "ru")
             try:
+                user.full_name = request.form.get("full_name")
+                user.phone = request.form.get("phone")
+                user.email = request.form.get("email")
+                user.username = request.form.get("username")
+                user.successful_bookings = int(
+                    request.form.get("successful_bookings", 0)
+                )
+                user.language_code = request.form.get("language_code", "ru")
+                avatar_file = request.files.get("avatar")
+                logger.info(
+                    f"Файл аватара в запросе для пользователя {user_id}: {request.files}"
+                )
+                if (
+                    avatar_file
+                    and avatar_file.filename
+                    and allowed_avatar_file(avatar_file.filename)
+                ):
+                    if avatar_file.filename.strip() == "":
+                        flash("Файл аватара имеет пустое имя", "error")
+                        logger.warning(
+                            f"Пустое имя файла аватара для пользователя {user_id}: {avatar_file.filename}"
+                        )
+                    else:
+                        avatar_file.seek(0, os.SEEK_END)
+                        file_size = avatar_file.tell()
+                        avatar_file.seek(0)
+                        if file_size > MAX_AVATAR_SIZE:
+                            flash(
+                                "Файл аватара превышает допустимый размер (5 МБ)",
+                                "error",
+                            )
+                            logger.warning(
+                                f"Файл аватара для пользователя {user_id} превышает 5 МБ"
+                            )
+                        else:
+                            # Удаляем старый аватар, если он существует
+                            if user.avatar:
+                                old_avatar_path = os.path.join(
+                                    "/app/static", "avatars", user.avatar.split("/")[-1]
+                                )
+                                if os.path.exists(old_avatar_path):
+                                    os.remove(old_avatar_path)
+                                    logger.info(
+                                        f"Старый аватар пользователя {user_id} удалён: {old_avatar_path}"
+                                    )
+                            os.makedirs("/app/static/avatars", exist_ok=True)
+                            raw_filename = avatar_file.filename
+                            logger.info(
+                                f"Исходное имя файла для пользователя {user_id}: {raw_filename}"
+                            )
+                            filename = custom_secure_filename(
+                                f"{user_id}_{raw_filename}"
+                            )
+                            logger.info(
+                                f"Обработанное имя файла для пользователя {user_id}: {filename}"
+                            )
+                            file_path = os.path.join("/app/static", "avatars", filename)
+                            avatar_file.save(file_path)
+                            os.chmod(file_path, 0o644)
+                            logger.info(
+                                f"Аватар сохранён для пользователя {user_id}: {file_path}"
+                            )
+                            user.avatar = f"static/avatars/{filename}"
+                elif avatar_file and not avatar_file.filename:
+                    flash("Файл аватара не выбран", "error")
+                    logger.warning(f"Файл аватара не выбран для пользователя {user_id}")
                 db.session.commit()
                 flash("Данные пользователя обновлены")
                 logger.info(f"Пользователь {user_id} обновлён")
@@ -258,6 +365,69 @@ def init_routes(app: Flask) -> None:
             recent_notifications=recent_notifications,
         )
 
+    @app.route("/user/<int:user_id>/delete_avatar", methods=["POST"])
+    @login_required
+    def delete_avatar(user_id: int):
+        """Удаление аватара пользователя."""
+        user = db.session.get(User, user_id)
+        if not user:
+            flash("Пользователь не найден")
+            logger.warning(f"Пользователь {user_id} не найден для удаления аватара")
+            return redirect(url_for("users"))
+        try:
+            if user.avatar:
+                avatar_path = os.path.join(
+                    "/app/static", "avatars", user.avatar.split("/")[-1]
+                )
+                logger.info(
+                    f"Попытка удаления аватара для пользователя {user_id}: {avatar_path}"
+                )
+                if os.path.exists(avatar_path):
+                    os.remove(avatar_path)
+                    logger.info(f"Аватар пользователя {user_id} удалён: {avatar_path}")
+                user.avatar = None
+                db.session.commit()
+                flash("Аватар удалён")
+                logger.info(f"Аватар пользователя {user_id} сброшен")
+            else:
+                flash("Аватар отсутствует")
+                logger.info(f"У пользователя {user_id} нет аватара для удаления")
+            return redirect(url_for("user_detail", user_id=user_id))
+        except Exception as e:
+            db.session.rollback()
+            flash("Ошибка при удалении аватара")
+            logger.error(f"Ошибка удаления аватара пользователя {user_id}: {str(e)}")
+            return redirect(url_for("user_detail", user_id=user_id))
+
+    @app.route("/static/avatars/<path:filename>")
+    def serve_avatar(filename: str):
+        """Обслуживание файлов аватаров."""
+        logger.info(f"Запрос к /static/avatars/{filename}")
+        try:
+            file_path = os.path.join("/app/static/avatars", filename)
+            logger.info(f"serve_avatar: Проверка пути {file_path}")
+            if not os.path.exists(file_path):
+                logger.warning(f"serve_avatar: Файл {file_path} не существует")
+                return "", 404
+            return send_from_directory("/app/static/avatars", filename)
+        except Exception as e:
+            logger.error(
+                f"Ошибка при обслуживании файла /static/avatars/{filename}: {str(e)}"
+            )
+            return "", 404
+
+    @app.route("/debug_static")
+    def debug_static():
+        """Отладочный маршрут для проверки static_folder."""
+        logger.info(f"debug_static: static_folder: {current_app.static_folder}")
+        logger.info(f"debug_static: static_url_path: {current_app.static_url_path}")
+        logger.info(f"debug_static: Текущая директория: {os.getcwd()}")
+        avatars_path = os.path.join("/app/static", "avatars")
+        logger.info(
+            f"debug_static: Содержимое /app/static/avatars: {os.listdir(avatars_path) if os.path.exists(avatars_path) else 'Папка не существует'}"
+        )
+        return "Debug info logged", 200
+
     @app.route("/user/<int:user_id>/delete", methods=["POST"])
     @login_required
     def delete_user(user_id: int):
@@ -267,6 +437,11 @@ def init_routes(app: Flask) -> None:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
         try:
+            if user.avatar:
+                avatar_path = os.path.join("web", "static", user.avatar)
+                if os.path.exists(avatar_path):
+                    os.remove(avatar_path)
+                    logger.info(f"Аватар пользователя {user_id} удалён: {avatar_path}")
             db.session.delete(user)
             db.session.commit()
             flash("Пользователь удалён")
@@ -494,19 +669,9 @@ def init_routes(app: Flask) -> None:
         return redirect(url_for("bookings"))
 
     def send_telegram_message_sync(telegram_id: int, message: str) -> bool:
-        """
-        Отправляет сообщение пользователю через Telegram в синхронном контексте.
-
-        Args:
-            telegram_id: ID пользователя в Telegram.
-            message: Текст сообщения.
-
-        Returns:
-            bool: True, если сообщение отправлено успешно, иначе False.
-        """
+        """Отправляет сообщение пользователю через Telegram в синхронном контексте."""
         try:
-            bot = get_bot()  # Получаем экземпляр бота
-            # Используем run_in_executor для выполнения асинхронной функции в синхронном контексте
+            bot = get_bot()
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             success = loop.run_until_complete(
@@ -534,8 +699,6 @@ def init_routes(app: Flask) -> None:
         try:
             booking.confirmed = True
             db.session.commit()
-
-            # Отправка сообщения пользователю через Telegram
             user = db.session.get(User, booking.user_id)
             tariff = db.session.get(Tariff, booking.tariff_id)
             message = (
@@ -545,7 +708,6 @@ def init_routes(app: Flask) -> None:
                 f"Время: {booking.visit_time}\n"
                 f"Продолжительность: {booking.duration} ч"
             )
-
             success = send_telegram_message_sync(user.telegram_id, message)
             if success:
                 logger.info(
@@ -555,7 +717,6 @@ def init_routes(app: Flask) -> None:
                 logger.error(
                     f"Не удалось отправить сообщение пользователю {user.telegram_id}"
                 )
-
             flash("Бронирование подтверждено")
             logger.info(f"Бронирование {booking_id} подтверждено")
         except Exception as e:
@@ -567,12 +728,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/promocodes")
     @login_required
     def promocodes():
-        """
-        Отображение списка промокодов, отсортированных по ID.
-
-        Returns:
-            Rendered template with list of promocodes.
-        """
+        """Отображение списка промокодов, отсортированных по ID."""
         promocodes = db.session.query(Promocode).order_by(Promocode.id).all()
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
@@ -587,15 +743,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/promocode/<int:promocode_id>")
     @login_required
     def promocode_detail(promocode_id: int):
-        """
-        Отображение детальной информации о промокоде.
-
-        Args:
-            promocode_id: ID промокода.
-
-        Returns:
-            Rendered template with promocode details or redirect if not found.
-        """
+        """Отображение детальной информации о промокоде."""
         promocode = db.session.get(Promocode, promocode_id)
         if not promocode:
             flash("Промокод не найден")
@@ -616,15 +764,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/promocode/<int:promocode_id>/edit", methods=["GET", "POST"])
     @login_required
     def edit_promocode(promocode_id: int):
-        """
-        Редактирование промокода.
-
-        Args:
-            promocode_id: ID промокода.
-
-        Returns:
-            Rendered template for editing or redirect after successful update.
-        """
+        """Редактирование промокода."""
         promocode = db.session.get(Promocode, promocode_id)
         if not promocode:
             flash("Промокод не найден")
@@ -664,15 +804,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/promocode/<int:promocode_id>/delete", methods=["POST"])
     @login_required
     def delete_promocode(promocode_id: int):
-        """
-        Удаление промокода.
-
-        Args:
-            promocode_id: ID промокода.
-
-        Returns:
-            Redirect to promocodes list after deletion.
-        """
+        """Удаление промокода."""
         promocode = db.session.get(Promocode, promocode_id)
         if not promocode:
             flash("Промокод не найден")
@@ -692,12 +824,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/promocode/new", methods=["GET", "POST"])
     @login_required
     def new_promocode():
-        """
-        Создание нового промокода.
-
-        Returns:
-            Rendered template for creation or redirect after successful creation.
-        """
+        """Создание нового промокода."""
         if request.method == "POST":
             try:
                 promocode = Promocode(
@@ -882,6 +1009,7 @@ def init_routes(app: Flask) -> None:
                         if user.reg_date
                         else None
                     ),
+                    "avatar": user.avatar,
                 }
                 for user in users
             ]
@@ -905,16 +1033,7 @@ def init_routes(app: Flask) -> None:
     @app.route("/newsletter", methods=["GET", "POST"])
     @login_required
     def newsletter() -> Any:
-        """
-        Обрабатывает страницу рассылки и отправку сообщений.
-
-        GET: Отображает страницу с формой рассылки.
-        POST: Обрабатывает отправку рассылки с текстом и медиафайлами.
-
-        Returns:
-            GET: Шаблон страницы рассылки.
-            POST: JSON-ответ с результатом отправки.
-        """
+        """Обрабатывает страницу рассылки и отправку сообщений."""
         try:
             if request.method == "GET":
                 users = db.session.query(User).order_by(User.id).all()
@@ -927,12 +1046,9 @@ def init_routes(app: Flask) -> None:
                     unread_notifications=unread_notifications,
                     recent_notifications=recent_notifications,
                 )
-
-            # Обработка POST-запроса
-            message: str = request.form.get("message")
-            recipient_type: str = request.form.get("recipient_type")
-            selected_users: List[str] = request.form.getlist("selected_users")
-
+            message = request.form.get("message")
+            recipient_type = request.form.get("recipient_type")
+            selected_users = request.form.getlist("selected_users")
             if not message:
                 logger.warning("Попытка отправки рассылки с пустым сообщением")
                 return (
@@ -941,8 +1057,6 @@ def init_routes(app: Flask) -> None:
                     ),
                     400,
                 )
-
-            # Очистка HTML от неподдерживаемых тегов
             cleaned_message = clean_html(message)
             if not cleaned_message:
                 logger.warning("Очищенный текст сообщения пустой")
@@ -955,9 +1069,7 @@ def init_routes(app: Flask) -> None:
                     ),
                     400,
                 )
-
-            # Получение пользователей
-            users: List[User] = []
+            users = []
             if recipient_type == "all":
                 users = db.session.query(User).filter(User.telegram_id != None).all()
             else:
@@ -976,7 +1088,6 @@ def init_routes(app: Flask) -> None:
                     .filter(User.id.in_(selected_users), User.telegram_id != None)
                     .all()
                 )
-
             if not users:
                 logger.warning("Нет пользователей для рассылки")
                 return (
@@ -985,8 +1096,6 @@ def init_routes(app: Flask) -> None:
                     ),
                     400,
                 )
-
-            # Обработка медиафайлов
             media_files = request.files.getlist("media")
             saved_files = []
             if media_files and media_files[0].filename:
@@ -998,11 +1107,9 @@ def init_routes(app: Flask) -> None:
                         jsonify({"status": "error", "message": "Максимум 5 файлов"}),
                         400,
                     )
-
                 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
                 for file in media_files:
                     if file and allowed_file(file.filename):
-                        # Проверка размера файла
                         file.seek(0, os.SEEK_END)
                         file_size = file.tell()
                         file.seek(0)
@@ -1035,7 +1142,6 @@ def init_routes(app: Flask) -> None:
                             400,
                         )
 
-            # Отправка сообщений
             async def send_newsletter():
                 failed_users = []
                 for user in users:
@@ -1044,7 +1150,6 @@ def init_routes(app: Flask) -> None:
                             if len(saved_files) == 1 and saved_files[0].rsplit(".", 1)[
                                 1
                             ].lower() in {"png", "jpg", "jpeg", "gif"}:
-                                # Отправка одного фото
                                 photo = FSInputFile(path=saved_files[0])
                                 await bot.send_photo(
                                     chat_id=user.telegram_id,
@@ -1055,7 +1160,6 @@ def init_routes(app: Flask) -> None:
                             elif len(saved_files) == 1 and saved_files[0].rsplit(
                                 ".", 1
                             )[1].lower() in {"mp4", "mov"}:
-                                # Отправка видео
                                 video = FSInputFile(path=saved_files[0])
                                 await bot.send_video(
                                     chat_id=user.telegram_id,
@@ -1064,7 +1168,6 @@ def init_routes(app: Flask) -> None:
                                     parse_mode="HTML",
                                 )
                             else:
-                                # Отправка фото как медиа-группы
                                 media_group = MediaGroupBuilder()
                                 for index, file_path in enumerate(saved_files):
                                     media_group.add_photo(
@@ -1084,7 +1187,6 @@ def init_routes(app: Flask) -> None:
                                     chat_id=user.telegram_id, media=media_group.build()
                                 )
                         else:
-                            # Отправка только текста
                             await bot.send_message(
                                 chat_id=user.telegram_id,
                                 text=cleaned_message,
@@ -1102,17 +1204,13 @@ def init_routes(app: Flask) -> None:
                                 f"Пользователь {user.telegram_id} заблокировал бота"
                             )
                         failed_users.append(user.telegram_id)
-
                 return failed_users
 
-            # Запуск асинхронной отправки с использованием текущего событийного цикла
             loop = asyncio.get_event_loop()
             if loop.is_closed():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             failed_users = loop.run_until_complete(send_newsletter())
-
-            # Сохранение истории рассылки
             try:
                 newsletter = Newsletter(
                     message=cleaned_message, recipient_count=len(users)
@@ -1123,16 +1221,12 @@ def init_routes(app: Flask) -> None:
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Ошибка сохранения истории рассылки: {str(e)}")
-
-            # Очистка временных файлов
             for file_path in saved_files:
                 try:
                     os.remove(file_path)
                     logger.info(f"Удалён временный файл: {file_path}")
                 except Exception as e:
                     logger.error(f"Ошибка удаления файла {file_path}: {str(e)}")
-
-            # Формирование ответа
             if failed_users:
                 failed_count = len(failed_users)
                 flash(
@@ -1154,7 +1248,6 @@ def init_routes(app: Flask) -> None:
                 return jsonify(
                     {"status": "success", "message": "Рассылка успешно отправлена"}
                 )
-
         except Exception as e:
             db.session.rollback()
             logger.error(f"Ошибка при обработке рассылки: {str(e)}")
@@ -1174,3 +1267,11 @@ def init_routes(app: Flask) -> None:
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
+
+    # Регистрация пользовательского фильтра для проверки существования файла
+    @app.template_filter("is_file")
+    def is_file(filename: str) -> bool:
+        """Проверяет, существует ли файл по указанному пути."""
+        if not filename:
+            return False
+        return os.path.exists(os.path.join("web", "static", filename))

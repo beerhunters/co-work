@@ -7,102 +7,135 @@
         <h3 class="card-title">Информация о пользователе</h3>
     </div>
     <div class="card-body">
-        {% if edit %}
-        <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}">
-        {% else %}
-        <div>
-        {% endif %}
-            <div class="form-group">
-                <label>ФИО</label>
+        <div class="row">
+            <!-- Левая часть: данные пользователя -->
+            <div class="col-md-8">
                 {% if edit %}
-                <input type="text" class="form-control" name="full_name" value="{{ user.full_name or '' }}" required>
+                <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}" enctype="multipart/form-data">
                 {% else %}
-                <p>{{ user.full_name or 'Не указано' }}</p>
+                <div>
                 {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Телефон</label>
+                    <div class="form-group">
+                        <label>ФИО</label>
+                        {% if edit %}
+                        <input type="text" class="form-control" name="full_name" value="{{ user.full_name or '' }}" required>
+                        {% else %}
+                        <p>{{ user.full_name or 'Не указано' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Телефон</label>
+                        {% if edit %}
+                        <input type="text" class="form-control" name="phone" value="{{ user.phone or '' }}" required>
+                        {% else %}
+                        <p>{{ user.phone or 'Не указано' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        {% if edit %}
+                        <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" required>
+                        {% else %}
+                        <p>{{ user.email or 'Не указано' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        {% if edit %}
+                        <input type="text" class="form-control" name="username" value="{{ user.username or '' }}">
+                        {% else %}
+                        <p>{{ user.username or 'Не указано' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Успешные бронирования</label>
+                        {% if edit %}
+                        <input type="text" class="form-control" name="successful_bookings" value="{{ user.successful_bookings or '0' }}">
+                        {% else %}
+                        <p>{{ user.successful_bookings }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Код языка</label>
+                        {% if edit %}
+                        <input type="text" class="form-control" name="language_code" value="{{ user.language_code or 'ru' }}">
+                        {% else %}
+                        <p>{{ user.language_code or 'ru' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Telegram ID</label>
+                        <p>{{ user.telegram_id }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата первого входа</label>
+                        <p>{{ user.first_join_time.strftime('%Y-%m-%d %H:%M:%S %Z') if user.first_join_time else 'Не указано' }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата регистрации</label>
+                        <p>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Согласие с правилами</label>
+                        <p>{{ '✅' if user.agreed_to_terms else '❌' }}</p>
+                    </div>
+                    {% if edit %}
+                    <div class="form-group">
+                        <label>Аватар</label>
+                        <input type="file" class="form-control-file" name="avatar" accept="image/*">
+                    </div>
+                    {% endif %}
+                    <br>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        {% if edit %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Сохранить
+                        </button>
+                        <a href="{{ url_for('users') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </a>
+                        {% else %}
+                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Редактировать
+                        </a>
+                        <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить пользователя?')">
+                                <i class="fas fa-trash"></i> Удалить
+                            </button>
+                        </form>
+                        {% if user.avatar %}
+                        <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-warning" onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
+                                <i class="fas fa-trash-alt"></i> Удалить аватар
+                            </button>
+                        </form>
+                        {% endif %}
+                        <a href="{{ url_for('users') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </a>
+                        {% endif %}
+                    </div>
                 {% if edit %}
-                <input type="text" class="form-control" name="phone" value="{{ user.phone or '' }}" required>
-                {% else %}
-                <p>{{ user.phone or 'Не указано' }}</p>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                {% if edit %}
-                <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" required>
-                {% else %}
-                <p>{{ user.email or 'Не указано' }}</p>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Username</label>
-                {% if edit %}
-                <input type="text" class="form-control" name="username" value="{{ user.username or '' }}">
-                {% else %}
-                <p>{{ user.username or 'Не указано' }}</p>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Успешные бронирования</label>
-                {% if edit %}
-                <input type="text" class="form-control" name="successful_bookings" value="{{ user.successful_bookings or '0' }}">
-                {% else %}
-                <p>{{ user.successful_bookings }}</p>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Код языка</label>
-                {% if edit %}
-                <input type="text" class="form-control" name="language_code" value="{{ user.language_code or 'ru' }}">
-                {% else %}
-                <p>{{ user.language_code or 'ru' }}</p>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label>Telegram ID</label>
-                <p>{{ user.telegram_id }}</p>
-            </div>
-            <div class="form-group">
-                <label>Дата первого входа</label>
-                <p>{{ user.first_join_time.strftime('%Y-%m-%d %H:%M:%S %Z') if user.first_join_time else 'Не указано' }}</p>
-            </div>
-            <div class="form-group">
-                <label>Дата регистрации</label>
-                <p>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</p>
-            </div>
-            <div class="form-group">
-                <label>Согласие с правилами</label>
-                <p>{{ '✅' if user.agreed_to_terms else '❌' }}</p>
-            </div>
-            <div class="form-group">
-                {% if edit %}
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Сохранить
-                </button>
-                <a href="{{ url_for('users') }}" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Назад
-                </a>
-                {% else %}
-                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary">
-                    <i class="fas fa-edit"></i> Редактировать
-                </a>
-                <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;">
-                    <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить пользователя?')">
-                        <i class="fas fa-trash"></i> Удалить
-                    </button>
                 </form>
-                <a href="{{ url_for('users') }}" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Назад
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+            <!-- Правая часть: аватар -->
+            <div class="col-md-4 text-center">
+                <!-- Отладочная информация -->
+                <p>Debug: user.avatar = {{ user.avatar }}</p>
+                <p>Debug: is_file = {{ user.avatar|is_file if user.avatar else 'No avatar' }}</p>
+                <p>Debug: img src = {{ url_for('static', filename=user.avatar.lstrip('static/')) if user.avatar else 'No avatar' }}</p>
+                {% if user.avatar and user.avatar|is_file %}
+                <img src="{{ url_for('static', filename=user.avatar.lstrip('static/')) }}" class="img-fluid rounded-circle" style="max-width: 200px; max-height: 200px;" alt="Аватар пользователя">
+                {% else %}
+                <a href="{{ url_for('edit_user', user_id=user.id) }}">
+                    <img src="{{ url_for('static', filename='images/placeholder_avatar.png') }}" class="img-fluid rounded-circle" style="max-width: 200px; max-height: 200px;" alt="Заглушка аватара">
                 </a>
                 {% endif %}
             </div>
-        {% if edit %}
-        </form>
-        {% else %}
         </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

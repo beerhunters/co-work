@@ -8,6 +8,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Создаем папку data и даем права на запись
 RUN mkdir -p /data && chown -R appuser:appuser /data
 RUN mkdir -p /app/logs && chown -R appuser:appuser /app/logs
+RUN mkdir -p /app/static/avatars && chown -R appuser:appuser /app/static/avatars
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
