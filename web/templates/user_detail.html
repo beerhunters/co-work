@@ -1,6 +1,89 @@
 {% extends "base.html" %}
 {% block title %}Данные пользователя{% endblock %}
 {% block content_title %}Данные пользователя{% endblock %}
+
+{% block extra_css %}
+<style>
+    .avatar-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    .avatar-image {
+        cursor: pointer;
+        transition: opacity 0.3s ease;
+        border: 3px solid #dee2e6;
+    }
+
+    .avatar-image:hover {
+        opacity: 0.8;
+        border-color: #007bff;
+    }
+
+    .avatar-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: 50%;
+        font-size: 14px;
+        text-align: center;
+    }
+
+    .avatar-container:hover .avatar-overlay {
+        opacity: 1;
+    }
+
+    .modal-dialog-centered {
+        display: flex;
+        align-items: center;
+        min-height: calc(100% - 1rem);
+    }
+
+    .modal-content {
+        border: none;
+        border-radius: 8px;
+    }
+
+    .modal-body {
+        padding: 0;
+        text-align: center;
+    }
+
+    .modal-avatar {
+        max-width: 100%;
+        max-height: 80vh;
+        border-radius: 8px;
+    }
+
+    .avatar-actions {
+        margin-top: 15px;
+    }
+
+    .btn-delete-avatar {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+    }
+
+    .btn-delete-avatar:hover {
+        background-color: #c82333;
+        border-color: #bd2130;
+        color: white;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <div class="card-header">
@@ -83,6 +166,7 @@
                     <div class="form-group">
                         <label>Аватар</label>
                         <input type="file" class="form-control-file" name="avatar" accept="image/*">
+                        <small class="form-text text-muted">Максимальный размер: 5 МБ. Форматы: PNG, JPG, JPEG, GIF</small>
                     </div>
                     {% endif %}
                     <br>
@@ -103,13 +187,6 @@
                                 <i class="fas fa-trash"></i> Удалить
                             </button>
                         </form>
-                        {% if user.avatar %}
-                        <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
-                            <button type="submit" class="btn btn-warning" onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
-                                <i class="fas fa-trash-alt"></i> Удалить аватар
-                            </button>
-                        </form>
-                        {% endif %}
                         <a href="{{ url_for('users') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Назад
                         </a>
@@ -121,21 +198,128 @@
                 </div>
                 {% endif %}
             </div>
+
             <!-- Правая часть: аватар -->
             <div class="col-md-4 text-center">
-                <!-- Отладочная информация -->
-                <p>Debug: user.avatar = {{ user.avatar }}</p>
-                <p>Debug: is_file = {{ user.avatar|is_file if user.avatar else 'No avatar' }}</p>
-                <p>Debug: img src = {{ url_for('static', filename=user.avatar.lstrip('static/')) if user.avatar else 'No avatar' }}</p>
+                <div class="mb-3">
+                    <h5>Аватар пользователя</h5>
+                </div>
+
+                <!-- Убираем отладочную информацию в production -->
+                {% if config.DEBUG %}
+                <div class="debug-info" style="font-size: 0.8em; color: #666; margin-bottom: 10px;">
+                    <p>Debug: user.avatar = {{ user.avatar }}</p>
+                    <p>Debug: is_file = {{ user.avatar|is_file if user.avatar else 'No avatar' }}</p>
+                </div>
+                {% endif %}
+
                 {% if user.avatar and user.avatar|is_file %}
-                <img src="{{ url_for('static', filename=user.avatar.lstrip('static/')) }}" class="img-fluid rounded-circle" style="max-width: 200px; max-height: 200px;" alt="Аватар пользователя">
+                    <div class="avatar-container">
+                        <img src="{{ url_for('static', filename=user.avatar) }}"
+                             class="img-fluid rounded-circle avatar-image"
+                             style="max-width: 200px; max-height: 200px;"
+                             alt="Аватар пользователя"
+                             data-toggle="modal"
+                             data-target="#avatarModal"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_avatar.png') }}';">
+                    </div>
+
+                    <!-- Кнопка удаления аватара под фотографией -->
+                    {% if not edit %}
+                    <div class="avatar-actions">
+                        <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-delete-avatar btn-sm"
+                                    onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
+                                <i class="fas fa-trash-alt"></i> Удалить аватар
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
                 {% else %}
-                <a href="{{ url_for('edit_user', user_id=user.id) }}">
-                    <img src="{{ url_for('static', filename='images/placeholder_avatar.png') }}" class="img-fluid rounded-circle" style="max-width: 200px; max-height: 200px;" alt="Заглушка аватара">
-                </a>
+                    <div class="avatar-container">
+                        <a href="{{ url_for('edit_user', user_id=user.id) }}">
+                            <img src="{{ url_for('static', filename='images/placeholder_avatar.png') }}"
+                                 class="img-fluid rounded-circle avatar-image"
+                                 style="max-width: 200px; max-height: 200px; opacity: 0.7;"
+                                 alt="Заглушка аватара">
+                        </a>
+                        <div class="avatar-overlay">
+                            <span><i class="fas fa-plus"></i><br>Добавить<br>аватар</span>
+                        </div>
+                    </div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+<!-- Модальное окно для просмотра аватара в полном размере -->
+{% if user.avatar and user.avatar|is_file %}
+<div class="modal fade" id="avatarModal" tabindex="-1" role="dialog" aria-labelledby="avatarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="avatarModalLabel">
+                    <i class="fas fa-user-circle"></i> Аватар пользователя: {{ user.full_name or 'ID ' + user.id|string }}
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <img src="{{ url_for('static', filename=user.avatar) }}"
+                     class="modal-avatar"
+                     alt="Полноразмерный аватар пользователя">
+            </div>
+            <div class="modal-footer">
+                {% if not edit %}
+                <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger btn-sm"
+                            onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
+                        <i class="fas fa-trash-alt"></i> Удалить аватар
+                    </button>
+                </form>
+                {% endif %}
+                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-edit"></i> Изменить аватар
+                </a>
+                <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">
+                    <i class="fas fa-times"></i> Закрыть
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Обработка клика по аватару для открытия модального окна
+    $('.avatar-image').on('click', function() {
+        if ($(this).data('target')) {
+            $($(this).data('target')).modal('show');
+        }
+    });
+
+    // Закрытие модального окна по ESC
+    $(document).on('keydown', function(e) {
+        if (e.keyCode === 27) { // ESC key
+            $('#avatarModal').modal('hide');
+        }
+    });
+
+    // Анимация при загрузке аватара
+    $('.avatar-image').on('load', function() {
+        $(this).addClass('loaded');
+    });
+
+    // Обработка ошибок загрузки изображения
+    $('.modal-avatar').on('error', function() {
+        $(this).attr('src', '{{ url_for("static", filename="images/placeholder_avatar.png") }}');
+        $(this).attr('alt', 'Ошибка загрузки изображения');
+    });
+});
+</script>
 {% endblock %}

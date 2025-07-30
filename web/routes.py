@@ -202,33 +202,30 @@ def init_routes(app: Flask) -> None:
         if not filename:
             logger.info("check_file_exists: Пустое имя файла")
             return False
-        file_name = filename.split("/")[-1]
-        file_path = os.path.join(
-            "/app/static", "avatars", file_name
-        )  # Явно используем /app/static
-        logger.info(f"check_file_exists: Текущая директория: {os.getcwd()}")
-        logger.info(f"check_file_exists: Проверка пути {file_path}")
-        logger.info(f"check_file_exists: static_folder: {current_app.static_folder}")
-        logger.info(
-            f"check_file_exists: Вызвано из шаблона: {current_app.jinja_env.filters.get('is_file') is not None}"
+
+        # Убираем префикс 'static/' если он есть
+        clean_filename = (
+            filename.replace("static/", "")
+            if filename.startswith("static/")
+            else filename
         )
+
+        # Строим путь относительно static_folder приложения
+        file_path = os.path.join(current_app.static_folder, clean_filename)
+
+        logger.info(f"check_file_exists: Проверка пути {file_path}")
+
         try:
             exists = os.path.exists(file_path)
-            readable = os.access(file_path, os.R_OK)
-            logger.info(
-                f"check_file_exists: os.path.exists: {exists}, os.access: {readable}"
-            )
-            if exists:
-                stat = os.stat(file_path)
-                logger.info(
-                    f"check_file_exists: os.stat: {stat.st_size} bytes, mode: {oct(stat.st_mode)}"
-                )
-            else:
-                logger.warning(f"check_file_exists: Файл {file_path} не существует")
+            readable = os.access(file_path, os.R_OK) if exists else False
+
+            logger.info(f"check_file_exists: exists={exists}, readable={readable}")
+
             if exists and not readable:
                 logger.warning(
                     f"check_file_exists: Файл {file_path} существует, но не читаем"
                 )
+
             return exists and readable
         except Exception as e:
             logger.error(
@@ -279,6 +276,7 @@ def init_routes(app: Flask) -> None:
         if not user:
             flash("Пользователь не найден")
             return redirect(url_for("users"))
+
         if request.method == "POST":
             try:
                 user.full_name = request.form.get("full_name")
@@ -289,10 +287,12 @@ def init_routes(app: Flask) -> None:
                     request.form.get("successful_bookings", 0)
                 )
                 user.language_code = request.form.get("language_code", "ru")
+
                 avatar_file = request.files.get("avatar")
                 logger.info(
-                    f"Файл аватара в запросе для пользователя {user_id}: {request.files}"
+                    f"Файл аватара в запросе для пользователя {user_id}: {avatar_file.filename if avatar_file else 'None'}"
                 )
+
                 if (
                     avatar_file
                     and avatar_file.filename
@@ -301,12 +301,14 @@ def init_routes(app: Flask) -> None:
                     if avatar_file.filename.strip() == "":
                         flash("Файл аватара имеет пустое имя", "error")
                         logger.warning(
-                            f"Пустое имя файла аватара для пользователя {user_id}: {avatar_file.filename}"
+                            f"Пустое имя файла аватара для пользователя {user_id}"
                         )
                     else:
+                        # Проверяем размер файла
                         avatar_file.seek(0, os.SEEK_END)
                         file_size = avatar_file.tell()
                         avatar_file.seek(0)
+
                         if file_size > MAX_AVATAR_SIZE:
                             flash(
                                 "Файл аватара превышает допустимый размер (5 МБ)",
@@ -319,42 +321,64 @@ def init_routes(app: Flask) -> None:
                             # Удаляем старый аватар, если он существует
                             if user.avatar:
                                 old_avatar_path = os.path.join(
-                                    "/app/static", "avatars", user.avatar.split("/")[-1]
+                                    current_app.static_folder,
+                                    (
+                                        user.avatar.replace("static/", "")
+                                        if user.avatar.startswith("static/")
+                                        else user.avatar
+                                    ),
                                 )
                                 if os.path.exists(old_avatar_path):
                                     os.remove(old_avatar_path)
                                     logger.info(
                                         f"Старый аватар пользователя {user_id} удалён: {old_avatar_path}"
                                     )
-                            os.makedirs("/app/static/avatars", exist_ok=True)
+
+                            # Создаём папку если не существует
+                            avatars_dir = os.path.join(
+                                current_app.static_folder, "avatars"
+                            )
+                            os.makedirs(avatars_dir, exist_ok=True)
+
+                            # Генерируем безопасное имя файла
                             raw_filename = avatar_file.filename
                             logger.info(
                                 f"Исходное имя файла для пользователя {user_id}: {raw_filename}"
                             )
+
                             filename = custom_secure_filename(
                                 f"{user_id}_{raw_filename}"
                             )
                             logger.info(
                                 f"Обработанное имя файла для пользователя {user_id}: {filename}"
                             )
-                            file_path = os.path.join("/app/static", "avatars", filename)
+
+                            # Сохраняем файл
+                            file_path = os.path.join(avatars_dir, filename)
                             avatar_file.save(file_path)
                             os.chmod(file_path, 0o644)
+
                             logger.info(
                                 f"Аватар сохранён для пользователя {user_id}: {file_path}"
                             )
-                            user.avatar = f"static/avatars/{filename}"
+
+                            # Сохраняем путь в БД БЕЗ префикса static/
+                            user.avatar = f"avatars/{filename}"
+
                 elif avatar_file and not avatar_file.filename:
                     flash("Файл аватара не выбран", "error")
                     logger.warning(f"Файл аватара не выбран для пользователя {user_id}")
+
                 db.session.commit()
                 flash("Данные пользователя обновлены")
                 logger.info(f"Пользователь {user_id} обновлён")
                 return redirect(url_for("user_detail", user_id=user_id))
+
             except Exception as e:
                 db.session.rollback()
                 flash("Ошибка при обновлении данных")
                 logger.error(f"Ошибка обновления пользователя {user_id}: {str(e)}")
+
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
@@ -374,17 +398,25 @@ def init_routes(app: Flask) -> None:
             flash("Пользователь не найден")
             logger.warning(f"Пользователь {user_id} не найден для удаления аватара")
             return redirect(url_for("users"))
+
         try:
             if user.avatar:
-                avatar_path = os.path.join(
-                    "/app/static", "avatars", user.avatar.split("/")[-1]
+                # Исправляем путь к файлу
+                avatar_filename = (
+                    user.avatar.replace("static/", "")
+                    if user.avatar.startswith("static/")
+                    else user.avatar
                 )
+                avatar_path = os.path.join(current_app.static_folder, avatar_filename)
+
                 logger.info(
                     f"Попытка удаления аватара для пользователя {user_id}: {avatar_path}"
                 )
+
                 if os.path.exists(avatar_path):
                     os.remove(avatar_path)
                     logger.info(f"Аватар пользователя {user_id} удалён: {avatar_path}")
+
                 user.avatar = None
                 db.session.commit()
                 flash("Аватар удалён")
@@ -392,29 +424,31 @@ def init_routes(app: Flask) -> None:
             else:
                 flash("Аватар отсутствует")
                 logger.info(f"У пользователя {user_id} нет аватара для удаления")
+
             return redirect(url_for("user_detail", user_id=user_id))
+
         except Exception as e:
             db.session.rollback()
             flash("Ошибка при удалении аватара")
             logger.error(f"Ошибка удаления аватара пользователя {user_id}: {str(e)}")
             return redirect(url_for("user_detail", user_id=user_id))
 
-    @app.route("/static/avatars/<path:filename>")
-    def serve_avatar(filename: str):
-        """Обслуживание файлов аватаров."""
-        logger.info(f"Запрос к /static/avatars/{filename}")
-        try:
-            file_path = os.path.join("/app/static/avatars", filename)
-            logger.info(f"serve_avatar: Проверка пути {file_path}")
-            if not os.path.exists(file_path):
-                logger.warning(f"serve_avatar: Файл {file_path} не существует")
-                return "", 404
-            return send_from_directory("/app/static/avatars", filename)
-        except Exception as e:
-            logger.error(
-                f"Ошибка при обслуживании файла /static/avatars/{filename}: {str(e)}"
-            )
-            return "", 404
+    # @app.route("/static/avatars/<path:filename>")
+    # def serve_avatar(filename: str):
+    #     """Обслуживание файлов аватаров."""
+    #     logger.info(f"Запрос к /static/avatars/{filename}")
+    #     try:
+    #         file_path = os.path.join("/app/static/avatars", filename)
+    #         logger.info(f"serve_avatar: Проверка пути {file_path}")
+    #         if not os.path.exists(file_path):
+    #             logger.warning(f"serve_avatar: Файл {file_path} не существует")
+    #             return "", 404
+    #         return send_from_directory("/app/static/avatars", filename)
+    #     except Exception as e:
+    #         logger.error(
+    #             f"Ошибка при обслуживании файла /static/avatars/{filename}: {str(e)}"
+    #         )
+    #         return "", 404
 
     @app.route("/debug_static")
     def debug_static():
