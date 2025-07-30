@@ -10,7 +10,6 @@
     }
 
     .avatar-image {
-        cursor: pointer;
         transition: opacity 0.3s ease;
         border: 3px solid #dee2e6;
     }
@@ -46,26 +45,54 @@
         display: flex;
         align-items: center;
         min-height: calc(100% - 1rem);
+        max-width: 700px; /* Фиксированная ширина модального окна */
+        margin: 0 auto;
     }
 
     .modal-content {
         border: none;
         border-radius: 8px;
+        width: 100%;
+        max-width: 700px; /* Убедимся, что контент не превышает ширину диалога */
     }
 
     .modal-body {
-        padding: 0;
+        padding: 10px; /* Небольшие отступы для визуального комфорта */
         text-align: center;
+        width: 100%; /* Занимает всю ширину .modal-content */
+        max-height: 400px; /* Фиксированная высота тела модального окна */
+        overflow: hidden; /* Обрезает содержимое, выходящее за границы */
+        box-sizing: border-box; /* Учитываем отступы в размерах */
+        display: flex; /* Flex для центрирования */
+        align-items: center; /* Вертикальное центрирование */
+        justify-content: center; /* Горизонтальное центрирование */
     }
 
-    .modal-avatar {
-        max-width: 100%;
-        max-height: 80vh;
-        border-radius: 8px;
+    .modal {
+        z-index: 999999 !important; /* Модальное окно поверх других элементов */
+    }
+
+    .modal-backdrop {
+        z-index: 999998 !important; /* Тень чуть ниже модального окна */
     }
 
     .avatar-actions {
         margin-top: 15px;
+    }
+
+    .btn-zoom-avatar {
+        background-color: #28a745;
+        border-color: #28a745;
+        color: white;
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+        margin-right: 5px;
+    }
+
+    .btn-zoom-avatar:hover {
+        background-color: #218838;
+        border-color: #1e7e34;
+        color: white;
     }
 
     .btn-delete-avatar {
@@ -205,7 +232,7 @@
                     <h5>Аватар пользователя</h5>
                 </div>
 
-                <!-- Убираем отладочную информацию в production -->
+                <!-- Отладочная информация (только в режиме DEBUG) -->
                 {% if config.DEBUG %}
                 <div class="debug-info" style="font-size: 0.8em; color: #666; margin-bottom: 10px;">
                     <p>Debug: user.avatar = {{ user.avatar }}</p>
@@ -215,21 +242,27 @@
 
                 {% if user.avatar and user.avatar|is_file %}
                     <div class="avatar-container">
-                        <img src="{{ url_for('static', filename=user.avatar) }}"
+                        <img src="{{ url_for('serve_avatar', filename=user.avatar.split('/')[-1]) }}"
                              class="img-fluid rounded-circle avatar-image"
                              style="max-width: 200px; max-height: 200px;"
-                             alt="Аватар пользователя"
-                             data-toggle="modal"
-                             data-target="#avatarModal"
-                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_avatar.png') }}';">
+                             alt="Аватар пользователя {{ user.full_name or 'ID ' + user.id|string }}"
+                             aria-label="Аватар пользователя {{ user.full_name or 'ID ' + user.id|string }}"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_avatar.png') }}'; console.warn('Ошибка загрузки аватара для пользователя ID {{ user.id }}');">
                     </div>
 
-                    <!-- Кнопка удаления аватара под фотографией -->
+                    <!-- Кнопки под аватаром -->
                     {% if not edit %}
                     <div class="avatar-actions">
+                        <button type="button" class="btn btn-zoom-avatar btn-sm"
+                                data-bs-toggle="modal"
+                                data-bs-target="#avatarModal"
+                                aria-label="Увеличить аватар пользователя">
+                            <i class="fas fa-search-plus"></i> Увеличить
+                        </button>
                         <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
                             <button type="submit" class="btn btn-delete-avatar btn-sm"
-                                    onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
+                                    onclick="return confirm('Вы уверены, что хотите удалить аватар?')"
+                                    aria-label="Удалить аватар пользователя">
                                 <i class="fas fa-trash-alt"></i> Удалить аватар
                             </button>
                         </form>
@@ -237,7 +270,7 @@
                     {% endif %}
                 {% else %}
                     <div class="avatar-container">
-                        <a href="{{ url_for('edit_user', user_id=user.id) }}">
+                        <a href="{{ url_for('edit_user', user_id=user.id) }}" aria-label="Добавить аватар пользователя">
                             <img src="{{ url_for('static', filename='images/placeholder_avatar.png') }}"
                                  class="img-fluid rounded-circle avatar-image"
                                  style="max-width: 200px; max-height: 200px; opacity: 0.7;"
@@ -255,35 +288,37 @@
 
 <!-- Модальное окно для просмотра аватара в полном размере -->
 {% if user.avatar and user.avatar|is_file %}
-<div class="modal fade" id="avatarModal" tabindex="-1" role="dialog" aria-labelledby="avatarModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+<div class="modal fade" id="avatarModal" tabindex="-1" aria-labelledby="avatarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="avatarModalLabel">
                     <i class="fas fa-user-circle"></i> Аватар пользователя: {{ user.full_name or 'ID ' + user.id|string }}
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть модальное окно"></button>
             </div>
-            <div class="modal-body">
-                <img src="{{ url_for('static', filename=user.avatar) }}"
-                     class="modal-avatar"
-                     alt="Полноразмерный аватар пользователя">
+            <div class="modal-body d-flex justify-content-center align-items-center" style="min-height: 400px;">
+                <img src="{{ url_for('serve_avatar', filename=user.avatar.split('/')[-1]) }}"
+                     class="img-fluid"
+                     style="max-width: 400px; max-height: 400px; object-fit: contain; border-radius: 8px;"
+                     alt="Полноразмерный аватар пользователя {{ user.full_name or 'ID ' + user.id|string }}"
+                     aria-describedby="avatarModalLabel"
+                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_avatar.png') }}'; console.warn('Ошибка загрузки аватара в модальном окне для пользователя ID {{ user.id }}');">
             </div>
             <div class="modal-footer">
                 {% if not edit %}
                 <form action="{{ url_for('delete_avatar', user_id=user.id) }}" method="POST" style="display:inline;">
                     <button type="submit" class="btn btn-danger btn-sm"
-                            onclick="return confirm('Вы уверены, что хотите удалить аватар?')">
+                            onclick="return confirm('Вы уверены, что хотите удалить аватар?')"
+                            aria-label="Удалить аватар пользователя">
                         <i class="fas fa-trash-alt"></i> Удалить аватар
                     </button>
                 </form>
                 {% endif %}
-                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary btn-sm">
+                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-primary btn-sm" aria-label="Изменить аватар пользователя">
                     <i class="fas fa-edit"></i> Изменить аватар
                 </a>
-                <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" aria-label="Закрыть модальное окно">
                     <i class="fas fa-times"></i> Закрыть
                 </button>
             </div>
@@ -295,31 +330,67 @@
 
 {% block extra_js %}
 <script>
-$(document).ready(function() {
-    // Обработка клика по аватару для открытия модального окна
-    $('.avatar-image').on('click', function() {
-        if ($(this).data('target')) {
-            $($(this).data('target')).modal('show');
-        }
-    });
-
-    // Закрытие модального окна по ESC
-    $(document).on('keydown', function(e) {
-        if (e.keyCode === 27) { // ESC key
-            $('#avatarModal').modal('hide');
-        }
-    });
-
+document.addEventListener('DOMContentLoaded', function() {
     // Анимация при загрузке аватара
-    $('.avatar-image').on('load', function() {
-        $(this).addClass('loaded');
+    const avatarImages = document.querySelectorAll('.avatar-image');
+    avatarImages.forEach(img => {
+        img.addEventListener('load', function() {
+            this.classList.add('loaded');
+            console.log('Аватар загружен для пользователя ID {{ user.id }}');
+        });
     });
 
     // Обработка ошибок загрузки изображения
-    $('.modal-avatar').on('error', function() {
-        $(this).attr('src', '{{ url_for("static", filename="images/placeholder_avatar.png") }}');
-        $(this).attr('alt', 'Ошибка загрузки изображения');
+    const images = document.querySelectorAll('.img-fluid, .avatar-image');
+    images.forEach(img => {
+        img.addEventListener('error', function() {
+            this.src = '{{ url_for("static", filename="images/placeholder_avatar.png") }}';
+            this.alt = 'Ошибка загрузки изображения';
+            console.warn('Ошибка загрузки аватара для пользователя ID {{ user.id }}');
+        });
     });
+
+    // Инициализация модального окна
+    const modalElement = document.querySelector('#avatarModal');
+    if (modalElement) {
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+
+        // Обработка клика по кнопке "Увеличить"
+        const zoomButton = document.querySelector('.btn-zoom-avatar');
+        if (zoomButton) {
+            zoomButton.addEventListener('click', function() {
+                console.log('Кнопка "Увеличить" нажата для пользователя ID {{ user.id }}');
+                modal.show();
+                // Отладка размеров и позиционирования
+                const modalImg = document.querySelector('.modal-body .img-fluid');
+                const modalBody = document.querySelector('.modal-body');
+                if (modalImg && modalBody) {
+                    console.log(`Исходный размер изображения: ${modalImg.naturalWidth}x${modalImg.naturalHeight}`);
+                    console.log(`Отображаемый размер изображения: ${modalImg.width}x${modalImg.height}`);
+                    console.log(`Размер .modal-body: ${modalBody.offsetWidth}x${modalBody.offsetHeight}`);
+                    console.log(`Позиция изображения: top=${modalImg.offsetTop}, left=${modalImg.offsetLeft}`);
+                }
+            });
+        }
+
+        // Очистка modal-backdrop при закрытии
+        modalElement.addEventListener('hidden.bs.modal', function() {
+            console.log('Модальное окно закрыто для пользователя ID {{ user.id }}');
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) {
+                backdrop.remove();
+                console.log('modal-backdrop удалён');
+            }
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = ''; // Восстанавливаем прокрутку
+        });
+    } else {
+        console.error('Модальное окно #avatarModal не найдено');
+    }
 });
 </script>
 {% endblock %}
