@@ -7,11 +7,19 @@ import os
 from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 import time
+import pytz
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 db = SQLAlchemy()
 login_manager = LoginManager()
+
+# Конфигурационные константы
+UPLOAD_FOLDER = "uploads/newsletter"
+AVATAR_FOLDER = "/app/static/avatars"
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 МБ
+MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 МБ для аватаров
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
 def create_app() -> Flask:
@@ -22,12 +30,16 @@ def create_app() -> Flask:
         Flask: Настроенное приложение Flask.
     """
     load_dotenv()  # Загружаем переменные из .env
-    # logging.basicConfig(level=logging.INFO)
 
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:////data/coworking.db"
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+        "DATABASE_URL", "sqlite:////data/coworking.db"
+    )
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "default-secret-key")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+    app.config["AVATAR_FOLDER"] = AVATAR_FOLDER
+    app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
     # Отключаем стандартное логирование Flask
     logging.getLogger("werkzeug").handlers.clear()
@@ -82,9 +94,29 @@ def create_app() -> Flask:
                 logger.error(f"Неожиданная ошибка при инициализации: {e}")
                 raise
 
-    from web.routes import init_routes
+        # Создание таблиц
+        db.create_all()
 
-    init_routes(app)
+        # Инициализация маршрутов
+        from web.routes import (
+            init_auth_routes,
+            init_user_routes,
+            init_tariff_routes,
+            init_booking_routes,
+            init_promocode_routes,
+            init_notification_routes,
+            init_newsletter_routes,
+            init_dashboard_routes,
+        )
+
+        init_auth_routes(app)
+        init_user_routes(app)
+        init_tariff_routes(app)
+        init_booking_routes(app)
+        init_promocode_routes(app)
+        init_notification_routes(app)
+        init_newsletter_routes(app)
+        init_dashboard_routes(app)
 
     return app
 
