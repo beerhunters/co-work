@@ -14,11 +14,13 @@ from sqlalchemy import (
     Date,
     Time,
     select,
+    Enum,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, Session as SQLAlchemySession
 from datetime import datetime
 import pytz
+import enum
 from werkzeug.security import generate_password_hash, check_password_hash
 from utils.logger import setup_logger
 
@@ -75,6 +77,7 @@ class User(Base):
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
     avatar = Column(String, nullable=True)  # Путь к файлу аватара
+    # tickets = relationship("Ticket", back_populates="user")  # Связь с тикетами
 
 
 class Tariff(Base):
@@ -145,6 +148,36 @@ class Notification(Base):
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
     user = relationship("User", backref="notifications")
     booking = relationship("Booking", backref="notifications")
+
+
+class TicketStatus(enum.Enum):
+    """Перечисление для статусов заявки"""
+
+    OPEN = "открыта"
+    IN_PROGRESS = "решается"
+    CLOSED = "закрыта"
+
+
+class Ticket(Base):
+    """Модель заявки в системе Helpdesk"""
+
+    __tablename__ = "tickets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    description = Column(String, nullable=False)
+    photo_id = Column(String, nullable=True)  # ID фотографии в Telegram
+    status = Column(Enum(TicketStatus), default=TicketStatus.OPEN, nullable=False)
+    comment = Column(String, nullable=True)  # Комментарий администратора
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    user = relationship("User", backref="users")  # Связь с таблицей пользователей
+
+    def __repr__(self):
+        return f"<Ticket(id={self.id}, user_id={self.user_id}, status={self.status})>"
 
 
 def init_db() -> None:
@@ -408,3 +441,77 @@ def get_promocode_by_name(promocode_name: str) -> Optional[Promocode]:
         )
     ).scalar_one_or_none()
     return promocode
+
+
+def create_ticket(
+    telegram_id: int,
+    description: str,
+    photo_id: Optional[str] = None,
+    status: TicketStatus = TicketStatus.OPEN,
+) -> Tuple[Optional[Ticket], Optional[str], Optional[SQLAlchemySession]]:
+    """
+    Создаёт запись заявки и уведомление в базе данных.
+
+    Args:
+        telegram_id: Telegram ID пользователя.
+        description: Описание заявки.
+        photo_id: ID фотографии в Telegram (если есть).
+        status: Статус заявки (по умолчанию OPEN).
+
+    Returns:
+        Tuple[Optional[Ticket], Optional[str], Optional[SQLAlchemySession]]:
+            - Объект заявки (или None при ошибке).
+            - Сообщение для администратора (или сообщение об ошибке).
+            - Открытая сессия SQLAlchemy (или None, если сессия закрыта).
+    """
+    session = Session()
+    try:
+        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        if not user:
+            logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
+            session.close()
+            return None, "Пользователь не найден", None
+
+        ticket = Ticket(
+            user_id=user.id,
+            description=description,
+            photo_id=photo_id,
+            status=status,
+            created_at=datetime.now(MOSCOW_TZ),
+            updated_at=datetime.now(MOSCOW_TZ),
+        )
+        session.add(ticket)
+        session.flush()
+
+        notification = Notification(
+            user_id=user.id,
+            message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
+            created_at=datetime.now(MOSCOW_TZ),
+            is_read=0,
+        )
+        session.add(notification)
+        session.commit()
+
+        admin_message = (
+            f"Новая заявка #{ticket.id}!\n"
+            f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
+            f"Описание: {description}\n"
+            f"Статус: {ticket.status.value}"
+            + (f"\nФото: {'Есть' if photo_id else 'Отсутствует'}" if photo_id else "")
+        )
+        logger.info(
+            f"Заявка создана: пользователь {telegram_id}, ID заявки {ticket.id}, photo_id={photo_id or 'без фото'}"
+        )
+        return ticket, admin_message, session
+    except IntegrityError as e:
+        session.rollback()
+        logger.error(
+            f"Ошибка уникальности при создании заявки для пользователя {telegram_id}: {str(e)}"
+        )
+        session.close()
+        return None, "Ошибка при создании заявки", None
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Ошибка создания заявки для пользователя {telegram_id}: {str(e)}")
+        session.close()
+        return None, "Ошибка при создании заявки", None

@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}Заявка #{{ ticket.id }}{% endblock %}
+{% block content_title %}Заявка #{{ ticket.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .photo-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    .photo-image {
+        transition: opacity 0.3s ease;
+        border: 3px solid #dee2e6;
+    }
+
+    .photo-image:hover {
+        opacity: 0.8;
+        border-color: #007bff;
+    }
+
+    .photo-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        font-size: 14px;
+        text-align: center;
+    }
+
+    .photo-container:hover .photo-overlay {
+        opacity: 1;
+    }
+
+    .modal-dialog-centered {
+        display: flex;
+        align-items: center;
+        min-height: calc(100% - 1rem);
+        max-width: 700px;
+        margin: 0 auto;
+    }
+
+    .modal-content {
+        border: none;
+        border-radius: 8px;
+        width: 100%;
+        max-width: 700px;
+    }
+
+    .modal-body {
+        padding: 10px;
+        text-align: center;
+        width: 100%;
+        max-height: 400px;
+        overflow: hidden;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal {
+        z-index: 999999 !important;
+    }
+
+    .modal-backdrop {
+        z-index: 999998 !important;
+    }
+
+    .photo-actions {
+        margin-top: 15px;
+    }
+
+    .btn-zoom-photo {
+        background-color: #28a745;
+        border-color: #28a745;
+        color: white;
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+        margin-right: 5px;
+    }
+
+    .btn-zoom-photo:hover {
+        background-color: #218838;
+        border-color: #1e7e34;
+        color: white;
+    }
+
+    .btn-delete-photo {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+    }
+
+    .btn-delete-photo:hover {
+        background-color: #c82333;
+        border-color: #bd2130;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Информация о заявке #{{ ticket.id }}</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <!-- Левая часть: данные заявки -->
+            <div class="col-md-8">
+                {% if edit %}
+                <form method="POST" action="{{ url_for('edit_ticket', ticket_id=ticket.id) }}">
+                {% else %}
+                <div>
+                {% endif %}
+                    <div class="form-group">
+                        <label>Пользователь</label>
+                        <p>{{ ticket.user.full_name or 'Не указано' }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Telegram ID</label>
+                        <p>{{ ticket.user.telegram_id }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Описание</label>
+                        {% if edit %}
+                        <textarea class="form-control" name="description" rows="4" required>{{ ticket.description }}</textarea>
+                        {% else %}
+                        <p>{{ ticket.description }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Статус</label>
+                        {% if edit %}
+                        <select class="form-control" name="status" required>
+                            <option value="открыта" {% if ticket.status.value == 'открыта' %}selected{% endif %}>Открыта</option>
+                            <option value="решается" {% if ticket.status.value == 'решается' %}selected{% endif %}>Решается</option>
+                            <option value="закрыта" {% if ticket.status.value == 'закрыта' %}selected{% endif %}>Закрыта</option>
+                        </select>
+                        {% else %}
+                        <p>{{ ticket.status.value }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Комментарий</label>
+                        {% if edit %}
+                        <textarea class="form-control" name="comment" rows="4">{{ ticket.comment or '' }}</textarea>
+                        {% else %}
+                        <p>{{ ticket.comment or 'Не указано' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label>Дата создания</label>
+                        <p>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.created_at else 'Не указано' }}</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Дата обновления</label>
+                        <p>{{ ticket.updated_at.strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.updated_at else 'Не указано' }}</p>
+                    </div>
+                    <br>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        {% if edit %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Сохранить
+                        </button>
+                        <a href="{{ url_for('tickets') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </a>
+                        {% else %}
+                        <a href="{{ url_for('edit_ticket', ticket_id=ticket.id) }}" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Редактировать
+                        </a>
+                        <form action="{{ url_for('delete_ticket', ticket_id=ticket.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить заявку?')">
+                                <i class="fas fa-trash"></i> Удалить
+                            </button>
+                        </form>
+                        <a href="{{ url_for('tickets') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </a>
+                        {% endif %}
+                    </div>
+                {% if edit %}
+                </form>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Правая часть: фото заявки -->
+            <div class="col-md-4 text-center">
+                <div class="mb-3">
+                    <h5>Фото заявки</h5>
+                </div>
+
+                {% if config.DEBUG %}
+                <div class="debug-info" style="font-size: 0.8em; color: #666; margin-bottom: 10px;">
+                    <p>Debug: ticket.photo_id = {{ ticket.photo_id }}</p>
+                </div>
+                {% endif %}
+
+                {% if ticket.photo_id %}
+                    <div class="photo-container">
+                        <img src="https://api.telegram.org/file/botYOUR_BOT_TOKEN/{{ ticket.photo_id }}"
+                             class="img-fluid photo-image"
+                             style="max-width: 200px; max-height: 200px;"
+                             alt="Фото заявки #{{ ticket.id }}"
+                             aria-label="Фото заявки #{{ ticket.id }}"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_photo.png') }}'; console.warn('Ошибка загрузки фото для заявки ID {{ ticket.id }}');">
+                    </div>
+
+                    <!-- Кнопки под фото -->
+                    {% if not edit %}
+                    <div class="photo-actions">
+                        <button type="button" class="btn btn-zoom-photo btn-sm"
+                                data-bs-toggle="modal"
+                                data-bs-target="#photoModal"
+                                aria-label="Увеличить фото заявки">
+                            <i class="fas fa-search-plus"></i> Увеличить
+                        </button>
+                        <form action="{{ url_for('delete_photo', ticket_id=ticket.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-delete-photo btn-sm"
+                                    onclick="return confirm('Вы уверены, что хотите удалить фото?')"
+                                    aria-label="Удалить фото заявки">
+                                <i class="fas fa-trash-alt"></i> Удалить фото
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                {% else %}
+                    <div class="photo-container">
+                        <img src="{{ url_for('static', filename='images/placeholder_photo.png') }}"
+                             class="img-fluid photo-image"
+                             style="max-width: 200px; max-height: 200px; opacity: 0.7;"
+                             alt="Заглушка фото">
+                        <div class="photo-overlay">
+                            <span><i class="fas fa-plus"></i><br>Фото<br>отсутствует</span>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра фото в полном размере -->
+{% if ticket.photo_id %}
+<div class="modal fade" id="photoModal" tabindex="-1" aria-labelledby="photoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="photoModalLabel">
+                    <i class="fas fa-image"></i> Фото заявки #{{ ticket.id }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть модальное окно"></button>
+            </div>
+            <div class="modal-body d-flex justify-content-center align-items-center" style="min-height: 400px;">
+                <img src="https://api.telegram.org/file/botYOUR_BOT_TOKEN/{{ ticket.photo_id }}"
+                     class="img-fluid"
+                     style="max-width: 400px; max-height: 400px; object-fit: contain; border-radius: 8px;"
+                     alt="Полноразмерное фото заявки #{{ ticket.id }}"
+                     aria-describedby="photoModalLabel"
+                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder_photo.png') }}'; console.warn('Ошибка загрузки фото в модальном окне для заявки ID {{ ticket.id }}');">
+            </div>
+            <div class="modal-footer">
+                {% if not edit %}
+                <form action="{{ url_for('delete_photo', ticket_id=ticket.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger btn-sm"
+                            onclick="return confirm('Вы уверены, что хотите удалить фото?')"
+                            aria-label="Удалить фото заявки">
+                        <i class="fas fa-trash-alt"></i> Удалить фото
+                    </button>
+                </form>
+                {% endif %}
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" aria-label="Закрыть модальное окно">
+                    <i class="fas fa-times"></i> Закрыть
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Анимация при загрузке фото
+    const photoImages = document.querySelectorAll('.photo-image');
+    photoImages.forEach(img => {
+        img.addEventListener('load', function() {
+            this.classList.add('loaded');
+            console.log('Фото загружено для заявки ID {{ ticket.id }}');
+        });
+    });
+
+    // Обработка ошибок загрузки изображения
+    const images = document.querySelectorAll('.img-fluid, .photo-image');
+    images.forEach(img => {
+        img.addEventListener('error', function() {
+            this.src = '{{ url_for("static", filename="images/placeholder_photo.png") }}';
+            this.alt = 'Ошибка загрузки изображения';
+            console.warn('Ошибка загрузки фото для заявки ID {{ ticket.id }}');
+        });
+    });
+
+    // Инициализация модального окна
+    const modalElement = document.querySelector('#photoModal');
+    if (modalElement) {
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+
+        // Обработка клика по кнопке "Увеличить"
+        const zoomButton = document.querySelector('.btn-zoom-photo');
+        if (zoomButton) {
+            zoomButton.addEventListener('click', function() {
+                console.log('Кнопка "Увеличить" нажата для заявки ID {{ ticket.id }}');
+                modal.show();
+                // Отладка размеров и позиционирования
+                const modalImg = document.querySelector('.modal-body .img-fluid');
+                const modalBody = document.querySelector('.modal-body');
+                if (modalImg && modalBody) {
+                    console.log(`Исходный размер изображения: ${modalImg.naturalWidth}x${modalImg.naturalHeight}`);
+                    console.log(`Отображаемый размер изображения: ${modalImg.width}x${modalImg.height}`);
+                    console.log(`Размер .modal-body: ${modalBody.offsetWidth}x${modalBody.offsetHeight}`);
+                    console.log(`Позиция изображения: top=${modalImg.offsetTop}, left=${modalImg.offsetLeft}`);
+                }
+            });
+        }
+
+        // Очистка modal-backdrop при закрытии
+        modalElement.addEventListener('hidden.bs.modal', function() {
+            console.log('Модальное окно закрыто для заявки ID {{ ticket.id }}');
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) {
+                backdrop.remove();
+                console.log('modal-backdrop удалён');
+            }
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+        });
+    } else {
+        console.error('Модальное окно #photoModal не найдено');
+    }
+});
+</script>
+{% endblock %}

@@ -6,3 +6,4 @@ from web.routes.promocode_routes import init_promocode_routes
 from web.routes.notification_routes import init_notification_routes
 from web.routes.newsletter_routes import init_newsletter_routes
 from web.routes.dashboard_routes import init_dashboard_routes
+from web.routes.ticket_routes import init_ticket_routes

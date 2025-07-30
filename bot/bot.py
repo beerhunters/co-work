@@ -3,6 +3,7 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from bot.hndlrs.ticket_hndlr import register_ticket_handlers
 from utils.bot_instance import get_bot
 from .hndlrs.registration_hndlr import register_reg_handlers
 from .hndlrs.booking_hndlr import register_book_handlers
@@ -44,6 +45,7 @@ async def main() -> None:
         # Регистрация обработчиков
         register_reg_handlers(dp)
         register_book_handlers(dp)
+        register_ticket_handlers(dp)
 
         logger.info("Бот запущен")
         await dp.start_polling(bot)

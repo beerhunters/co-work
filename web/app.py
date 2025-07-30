@@ -107,6 +107,7 @@ def create_app() -> Flask:
             init_notification_routes,
             init_newsletter_routes,
             init_dashboard_routes,
+            init_ticket_routes,
         )
 
         init_auth_routes(app)
@@ -117,6 +118,7 @@ def create_app() -> Flask:
         init_notification_routes(app)
         init_newsletter_routes(app)
         init_dashboard_routes(app)
+        init_ticket_routes(app)
 
     return app
 

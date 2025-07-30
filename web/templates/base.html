@@ -438,6 +438,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('tickets') }}">
+                                <i class="fas fa-ticket-alt"></i> Заявки
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('notifications') }}">
                                 <i class="fas fa-bell"></i> Уведомления
                             </a>
@@ -504,6 +509,8 @@
                                 icon = 'fas fa-user-plus text-success';
                             } else if (notification.type === 'booking') {
                                 icon = 'fas fa-calendar-plus text-primary';
+                            } else if (notification.type === 'ticket') {
+                                icon = 'fas fa-ticket-alt text-warning';
                             }
 
                             item.innerHTML = `
