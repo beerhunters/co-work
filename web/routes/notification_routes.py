@@ -1,8 +1,6 @@
-from flask import Flask, request, jsonify, flash
-from flask import Flask, request, render_template, jsonify, flash
+from flask import Flask, render_template, jsonify, flash
 from flask_login import login_required
 from datetime import datetime, timedelta
-from sqlalchemy import desc
 from typing import Any
 
 from models.models import Notification

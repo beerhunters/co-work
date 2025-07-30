@@ -1,14 +1,15 @@
+import asyncio
 import os
 import re
 from datetime import datetime
 from typing import List, Dict, Optional, Any
+
 from sqlalchemy import desc
 
-from models.models import Notification, User, Booking
-from web.app import db
-from utils.logger import setup_logger
+from models.models import Notification
 from utils.bot_instance import get_bot
-import asyncio
+from utils.logger import setup_logger
+from web.app import db
 
 logger = setup_logger(__name__)
 

@@ -1,12 +1,12 @@
+from typing import Any
+
 from flask import Flask, request, render_template, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import check_password_hash
-from typing import Any
 
 from models.models import Admin
-from web.routes.utils import get_unread_notifications_count, get_recent_notifications
-from web.app import db
 from utils.logger import setup_logger
+from web.app import db
 
 logger = setup_logger(__name__)
 

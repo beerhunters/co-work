@@ -1,24 +1,24 @@
-import os
 import asyncio
-from flask import Flask, request, render_template, jsonify, flash
-from flask_login import login_required
-from werkzeug.utils import secure_filename
+import os
+from typing import Any, List
+
 from aiogram.types import FSInputFile
 from aiogram.utils.media_group import MediaGroupBuilder
-from typing import Any, List
+from flask import Flask, request, render_template, jsonify, flash
+from flask_login import login_required
 from sqlalchemy import desc
+from werkzeug.utils import secure_filename
 
 from models.models import User, Newsletter
+from utils.bot_instance import get_bot
+from utils.logger import setup_logger
+from web.app import db, UPLOAD_FOLDER, MAX_FILE_SIZE
 from web.routes.utils import (
     clean_html,
     allowed_file,
-    send_telegram_message_sync,
     get_recent_notifications,
     get_unread_notifications_count,
 )
-from web.app import db, UPLOAD_FOLDER, MAX_FILE_SIZE
-from utils.bot_instance import get_bot
-from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

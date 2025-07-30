@@ -1,4 +1,6 @@
 import os
+from typing import Any, Optional
+
 from flask import (
     Flask,
     request,
@@ -9,10 +11,10 @@ from flask import (
     send_from_directory,
 )
 from flask_login import login_required
-from werkzeug.utils import secure_filename
-from typing import Any, Optional
 
 from models.models import User
+from utils.logger import setup_logger
+from web.app import db, AVATAR_FOLDER, MAX_AVATAR_SIZE
 from web.routes.utils import (
     check_file_exists,
     allowed_avatar_file,
@@ -20,8 +22,6 @@ from web.routes.utils import (
     get_recent_notifications,
     get_unread_notifications_count,
 )
-from web.app import db, AVATAR_FOLDER, MAX_AVATAR_SIZE
-from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
