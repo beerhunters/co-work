@@ -285,12 +285,25 @@ def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
 def check_and_add_user(
     telegram_id: int, username: Optional[str] = None, referrer_id: Optional[int] = None
 ) -> Tuple[Optional[User], bool]:
-    """Проверяет, существует ли пользователь в БД, и добавляет его, если не существует."""
+    """
+    Проверяет, существует ли пользователь в БД, и добавляет его, если не существует.
+
+    Args:
+        telegram_id: Telegram ID пользователя.
+        username: Имя пользователя в Telegram (опционально).
+        referrer_id: ID реферера (опционально).
+
+    Returns:
+        Tuple[Optional[User], bool]: Пользователь и флаг завершенности регистрации.
+    """
     session = Session()
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
             is_complete = all([user.full_name, user.phone, user.email])
+            logger.debug(
+                f"Пользователь {telegram_id} уже существует, завершенность регистрации: {is_complete}, referrer_id: {user.referrer_id}"
+            )
             return user, is_complete
         else:
             user = User(
@@ -298,13 +311,16 @@ def check_and_add_user(
                 username=username,
                 first_join_time=datetime.now(MOSCOW_TZ),
                 referrer_id=referrer_id,
-                invited_count=0,  # Инициализация поля invited_count
+                invited_count=0,
             )
             session.add(user)
             session.commit()
+            logger.info(
+                f"Создан новый пользователь {telegram_id} с referrer_id {referrer_id}"
+            )
             return user, False
     except Exception as e:
-        logger.error(f"Ошибка при проверке/добавлении пользователя: {e}")
+        logger.error(f"Ошибка при проверке/добавлении пользователя {telegram_id}: {e}")
         session.rollback()
         raise
     finally:
@@ -322,7 +338,20 @@ def add_user(
     avatar: Optional[str] = None,
     referrer_id: Optional[int] = None,
 ) -> None:
-    """Добавление или обновление пользователя в БД и создание уведомления."""
+    """
+    Добавление или обновление пользователя в БД и создание уведомления.
+
+    Args:
+        telegram_id: Telegram ID пользователя.
+        full_name: Полное имя пользователя.
+        phone: Номер телефона.
+        email: Электронная почта.
+        username: Имя пользователя в Telegram.
+        reg_date: Дата регистрации.
+        agreed_to_terms: Согласие с правилами.
+        avatar: Аватар пользователя.
+        referrer_id: ID реферера.
+    """
     session = Session()
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
@@ -347,6 +376,9 @@ def add_user(
                 )
             if referrer_id is not None:
                 user.referrer_id = referrer_id
+                logger.debug(
+                    f"Обновлён referrer_id для пользователя {telegram_id}: {referrer_id}"
+                )
         else:
             logger.info(f"Создание нового пользователя {telegram_id}")
             user = User(
@@ -358,7 +390,7 @@ def add_user(
                 username=username,
                 successful_bookings=0,
                 language_code="ru",
-                invited_count=0,  # Инициализация поля invited_count
+                invited_count=0,
                 reg_date=reg_date or datetime.now(MOSCOW_TZ),
                 agreed_to_terms=(
                     agreed_to_terms if agreed_to_terms is not None else False
@@ -369,15 +401,21 @@ def add_user(
             session.add(user)
             session.flush()
 
-        # Если регистрация завершена (указаны full_name, phone, email), увеличиваем invited_count реферера
+        # Если регистрация завершена и есть referrer_id, увеличиваем invited_count реферера
         if full_name and phone and email and user.referrer_id:
-            referrer = session.query(User).filter_by(id=user.referrer_id).first()
+            referrer = (
+                session.query(User).filter_by(telegram_id=user.referrer_id).first()
+            )
             if referrer:
                 referrer.invited_count += 1
                 session.add(referrer)
                 logger.info(
-                    f"Увеличен invited_count для пользователя {referrer.telegram_id} "
-                    f"до {referrer.invited_count}"
+                    f"Увеличен invited_count для реферера {referrer.telegram_id} "
+                    f"до {referrer.invited_count} для пользователя {telegram_id}"
+                )
+            else:
+                logger.warning(
+                    f"Реферер с ID {user.referrer_id} не найден для пользователя {telegram_id}"
                 )
 
         if full_name and phone and email:

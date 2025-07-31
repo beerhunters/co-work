@@ -28,6 +28,7 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 BOT_LINK = os.getenv("BOT_LINK")
 INVITE_LINK = os.getenv("INVITE_LINK")
+GROUP_ID = os.getenv("GROUP_ID")
 
 
 def create_register_keyboard() -> InlineKeyboardMarkup:
@@ -300,7 +301,14 @@ async def process_phone(message: Message, state: FSMContext) -> None:
 
 @router.message(Registration.email)
 async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
-    """Обработка ввода email и завершение регистрации."""
+    """
+    Обработка ввода email и завершение регистрации.
+
+    Args:
+        message: Входящее сообщение с email.
+        state: Контекст состояния FSM.
+        bot: Экземпляр бота.
+    """
     email = message.text.strip()
     if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
         await message.answer("Неверный формат email. Попробуйте снова:")
@@ -308,15 +316,12 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
 
     data = await state.get_data()
     full_name = data["full_name"]
-    # Разделение ФИО на фамилию, имя и отчество
-    name_parts = full_name.split()
-    last_name = name_parts[0] if len(name_parts) > 0 else "Не указано"
-    first_name = name_parts[1] if len(name_parts) > 1 else "Не указано"
-    middle_name = name_parts[2] if len(name_parts) > 2 else "Не указано"
+    phone = data["phone"]
 
     try:
         user = get_user_by_telegram_id(message.from_user.id)
         referrer_username = None
+        referrer_id = user.referrer_id if user else None
         if user and user.referrer_id:
             referrer = get_user_by_telegram_id(user.referrer_id)
             referrer_username = (
@@ -328,13 +333,12 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         add_user(
             telegram_id=message.from_user.id,
             full_name=full_name,
-            phone=data["phone"],
+            phone=phone,
             email=email,
             username=message.from_user.username,
             reg_date=datetime.now(MOSCOW_TZ),
+            referrer_id=referrer_id,  # Передаем referrer_id явно
         )
-        # GROUP_ID = -1002444417785
-        GROUP_ID = -1002350206500
         invite_url = "https://t.me/partacowo"  # Fallback-ссылка на случай ошибки
         try:
             invite_link = await bot.create_chat_invite_link(
@@ -362,13 +366,18 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:
+                # Разделение ФИО на фамилию, имя и отчество
+                name_parts = full_name.split()
+                last_name = name_parts[0] if len(name_parts) > 0 else "Не указано"
+                first_name = name_parts[1] if len(name_parts) > 1 else "Не указано"
+                middle_name = name_parts[2] if len(name_parts) > 2 else "Не указано"
                 notification = (
                     "<b>===👤 Новый резидент ✅ ===</b>\n\n"
                     f"Фамилия: <code>{last_name}</code>\n"
                     f"Имя: <code>{first_name}</code>\n"
                     f"Отчество: <code>{middle_name}</code>\n"
                     f"<b>🎟️ TG: </b>@{message.from_user.username or 'Не указано'}\n"
-                    f"<b>☎️ Телефон: </b><code>{data['phone']}</code>\n"
+                    f"<b>☎️ Телефон: </b><code>{phone}</code>\n"
                     f"<b>📨 Email: </b><code>{email}</code>"
                 )
                 if referrer_username:
