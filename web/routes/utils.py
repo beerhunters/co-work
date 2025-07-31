@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Any
 
 from sqlalchemy import desc
 
+from aiogram import Bot
 from models.models import Notification
 from utils.bot_instance import get_bot
 from utils.logger import setup_logger
@@ -216,6 +217,32 @@ def clean_html(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
+_bot_instance: Optional[Bot] = None
+
+
+async def send_telegram_message_async(telegram_id: int, message: str, bot: Bot) -> bool:
+    """
+    Асинхронно отправляет сообщение в Telegram.
+
+    Args:
+        telegram_id: ID пользователя в Telegram.
+        message: Текст сообщения.
+        bot: Экземпляр aiogram.Bot.
+
+    Returns:
+        bool: True, если сообщение отправлено, иначе False.
+    """
+    try:
+        await bot.send_message(chat_id=telegram_id, text=message)
+        logger.info(f"Сообщение отправлено пользователю {telegram_id}")
+        return True
+    except Exception as e:
+        logger.error(
+            f"Не удалось отправить сообщение пользователю {telegram_id}: {str(e)}"
+        )
+        return False
+
+
 def send_telegram_message_sync(telegram_id: int, message: str) -> bool:
     """
     Отправляет сообщение пользователю через Telegram в синхронном контексте.
@@ -225,23 +252,28 @@ def send_telegram_message_sync(telegram_id: int, message: str) -> bool:
         message: Текст сообщения.
 
     Returns:
-        True, если сообщение отправлено, иначе False.
+        bool: True, если сообщение отправлено, иначе False.
 
     Example:
         >>> send_telegram_message_sync(123456, "Hello!")
         True
     """
+    bot = get_bot()
     try:
-        bot = get_bot()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         success = loop.run_until_complete(
-            bot.send_message(chat_id=telegram_id, text=message)
+            send_telegram_message_async(telegram_id, message, bot)
         )
-        loop.close()
-        return bool(success)
+        return success
     except Exception as e:
         logger.error(
-            f"Не удалось отправить сообщение пользователю {telegram_id}: {str(e)}"
+            f"Ошибка в синхронной отправке сообщения пользователю {telegram_id}: {str(e)}"
         )
         return False
+    finally:
+        try:
+            loop.run_until_complete(bot.session.close())  # Закрываем сессию
+            loop.close()
+        except Exception as e:
+            logger.warning(f"Ошибка при закрытии сессии или цикла: {str(e)}")

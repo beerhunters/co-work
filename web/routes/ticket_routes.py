@@ -59,7 +59,7 @@ def init_ticket_routes(app: Flask) -> None:
         """
         ticket = db.session.get(Ticket, ticket_id)
         if not ticket:
-            flash("Заявка не найдена")
+            flash("Заявка не найдена", "error")
             return redirect(url_for("tickets"))
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
@@ -67,7 +67,6 @@ def init_ticket_routes(app: Flask) -> None:
             "ticket_detail.html",
             ticket=ticket,
             user=ticket.user,
-            edit=False,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
@@ -86,26 +85,24 @@ def init_ticket_routes(app: Flask) -> None:
         """
         ticket = db.session.get(Ticket, ticket_id)
         if not ticket:
-            flash("Заявка не найдена")
+            flash("Заявка не найдена", "error")
             return redirect(url_for("tickets"))
+
         if request.method == "POST":
             try:
-                description = request.form.get("description")
                 status = request.form.get("status")
                 comment = request.form.get("comment")
 
                 if status == "закрыта" and not comment:
-                    flash("Комментарий обязателен для закрытия заявки")
+                    flash("Комментарий обязателен для закрытия заявки", "error")
                     return render_template(
                         "ticket_detail.html",
                         ticket=ticket,
                         user=ticket.user,
-                        edit=True,
                         unread_notifications=get_unread_notifications_count(),
                         recent_notifications=get_recent_notifications(),
                     )
 
-                ticket.description = description
                 ticket.status = TicketStatus(status)
                 ticket.comment = comment
                 ticket.updated_at = datetime.utcnow()
@@ -124,20 +121,28 @@ def init_ticket_routes(app: Flask) -> None:
                     logger.error(
                         f"Не удалось отправить сообщение пользователю {user.telegram_id}"
                     )
-                flash("Данные заявки обновлены")
+                    flash("Заявка обновлена, но уведомление не отправлено", "warning")
+                flash("Данные заявки обновлены", "success")
                 logger.info(f"Заявка #{ticket.id} обновлена")
                 return redirect(url_for("ticket_detail", ticket_id=ticket_id))
             except Exception as e:
                 db.session.rollback()
-                flash("Ошибка при обновлении данных")
+                flash("Ошибка при обновлении данных", "error")
                 logger.error(f"Ошибка обновления заявки #{ticket.id}: {str(e)}")
+                return render_template(
+                    "ticket_detail.html",
+                    ticket=ticket,
+                    user=ticket.user,
+                    unread_notifications=get_unread_notifications_count(),
+                    recent_notifications=get_recent_notifications(),
+                )
+
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
             "ticket_detail.html",
             ticket=ticket,
             user=ticket.user,
-            edit=True,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
@@ -156,46 +161,15 @@ def init_ticket_routes(app: Flask) -> None:
         """
         ticket = db.session.get(Ticket, ticket_id)
         if not ticket:
-            flash("Заявка не найдена")
+            flash("Заявка не найдена", "error")
             return redirect(url_for("tickets"))
         try:
             db.session.delete(ticket)
             db.session.commit()
-            flash("Заявка удалена")
+            flash("Заявка удалена", "success")
             logger.info(f"Заявка #{ticket.id} удалена")
         except Exception as e:
             db.session.rollback()
-            flash("Ошибка при удалении заявки")
+            flash("Ошибка при удалении заявки", "error")
             logger.error(f"Ошибка удаления заявки #{ticket.id}: {str(e)}")
         return redirect(url_for("tickets"))
-
-    @app.route("/ticket/<int:ticket_id>/delete_photo", methods=["POST"])
-    @login_required
-    def delete_photo(ticket_id: int) -> Any:
-        """
-        Удаление фото из заявки.
-
-        Args:
-            ticket_id: ID заявки.
-
-        Returns:
-            Редирект на страницу заявки.
-        """
-        ticket = db.session.get(Ticket, ticket_id)
-        if not ticket:
-            flash("Заявка не найдена")
-            return redirect(url_for("tickets"))
-        if not ticket.photo_id:
-            flash("Фото отсутствует")
-            return redirect(url_for("ticket_detail", ticket_id=ticket_id))
-        try:
-            ticket.photo_id = None
-            ticket.updated_at = datetime.utcnow()
-            db.session.commit()
-            flash("Фото удалено")
-            logger.info(f"Фото удалено из заявки #{ticket.id}")
-        except Exception as e:
-            db.session.rollback()
-            flash("Ошибка при удалении фото")
-            logger.error(f"Ошибка удаления фото из заявки #{ticket.id}: {str(e)}")
-        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
