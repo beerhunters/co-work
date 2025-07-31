@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 from sqlalchemy import desc
+from functools import lru_cache
 
 from aiogram import Bot
 from models.models import Notification
@@ -127,6 +128,7 @@ def check_file_exists(filename: Optional[str]) -> bool:
         return False
 
 
+@lru_cache(maxsize=128)
 def get_unread_notifications_count() -> int:
     """
     Получение количества непрочитанных уведомлений.
@@ -143,6 +145,7 @@ def get_unread_notifications_count() -> int:
     return count
 
 
+@lru_cache(maxsize=128)
 def get_recent_notifications(limit: int = 5) -> List[Dict[str, Any]]:
     """
     Возвращает последние уведомления в формате, подходящем для шаблона и AJAX.

@@ -1,4 +1,5 @@
-from sqlite3 import IntegrityError
+import time
+from sqlite3 import IntegrityError, OperationalError
 from typing import Optional, Tuple, List
 from sqlalchemy import (
     create_engine,
@@ -365,6 +366,7 @@ def create_booking(
 ) -> Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]:
     """Создаёт запись бронирования и уведомление в базе данных."""
     session = Session()
+    retries = 3
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if not user:
@@ -376,49 +378,59 @@ def create_booking(
             logger.warning(f"Тариф с ID {tariff_id} не найден или не активен")
             session.close()
             return None, "Тариф не найден", None
-        booking = Booking(
-            user_id=user.id,
-            tariff_id=tariff.id,
-            visit_date=visit_date,
-            visit_time=visit_time,
-            duration=duration,
-            promocode_id=promocode_id,
-            amount=amount or tariff.price,
-            paid=paid,
-            confirmed=confirmed,
-            payment_id=payment_id,
-        )
-        session.add(booking)
-        session.flush()
-        notification = Notification(
-            user_id=user.id,
-            message=f"Новая бронь от {user.full_name or 'пользователя'}: тариф {tariff.name}, дата {visit_date}"
-            + (
-                f", время {visit_time}, длительность {duration} ч"
-                if tariff.purpose == "Переговорная"
-                else ""
-            ),
-            created_at=datetime.now(MOSCOW_TZ),
-            is_read=0,
-            booking_id=booking.id,
-        )
-        session.add(notification)
-        session.commit()
-        admin_message = (
-            f"Новая бронь!\n"
-            f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
-            f"Тариф: {tariff.name} ({tariff.price} ₽)\n"
-            f"Дата: {visit_date}"
-            + (
-                f"\nВремя: {visit_time}\nПродолжительность: {duration} ч"
-                if tariff.purpose == "Переговорная"
-                else ""
-            )
-        )
-        logger.info(
-            f"Бронь создана: пользователь {telegram_id}, тариф {tariff.name}, дата {visit_date}, ID брони {booking.id}"
-        )
-        return booking, admin_message, session
+        for attempt in range(retries):
+            try:
+                booking = Booking(
+                    user_id=user.id,
+                    tariff_id=tariff.id,
+                    visit_date=visit_date,
+                    visit_time=visit_time,
+                    duration=duration,
+                    promocode_id=promocode_id,
+                    amount=amount or tariff.price,
+                    paid=paid,
+                    confirmed=confirmed,
+                    payment_id=payment_id,
+                )
+                session.add(booking)
+                session.flush()
+                notification = Notification(
+                    user_id=user.id,
+                    message=f"Новая бронь от {user.full_name or 'пользователя'}: тариф {tariff.name}, дата {visit_date}"
+                    + (
+                        f", время {visit_time}, длительность {duration} ч"
+                        if tariff.purpose == "Переговорная"
+                        else ""
+                    ),
+                    created_at=datetime.now(MOSCOW_TZ),
+                    is_read=0,
+                    booking_id=booking.id,
+                )
+                session.add(notification)
+                session.commit()
+                admin_message = (
+                    f"Новая бронь!\n"
+                    f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
+                    f"Тариф: {tariff.name} ({tariff.price} ₽)\n"
+                    f"Дата: {visit_date}"
+                    + (
+                        f"\nВремя: {visit_time}\nПродолжительность: {duration} ч"
+                        if tariff.purpose == "Переговорная"
+                        else ""
+                    )
+                )
+                logger.info(
+                    f"Бронь создана: пользователь {telegram_id}, тариф {tariff.name}, дата {visit_date}, ID брони {booking.id}"
+                )
+                return booking, admin_message, session
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < retries - 1:
+                    logger.warning(
+                        f"Попытка {attempt + 1}: база данных заблокирована, повтор через 100 мс"
+                    )
+                    session.rollback()
+                    time.sleep(0.1)
+                    continue
     except IntegrityError as e:
         session.rollback()
         logger.error(
@@ -467,45 +479,59 @@ def create_ticket(
             - Открытая сессия SQLAlchemy (или None, если сессия закрыта).
     """
     session = Session()
+    retries = 3
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if not user:
             logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
             session.close()
             return None, "Пользователь не найден", None
+        for attempt in range(retries):
+            try:
+                ticket = Ticket(
+                    user_id=user.id,
+                    description=description,
+                    photo_id=photo_id,
+                    status=status,
+                    created_at=datetime.now(MOSCOW_TZ),
+                    updated_at=datetime.now(MOSCOW_TZ),
+                )
+                session.add(ticket)
+                session.flush()
 
-        ticket = Ticket(
-            user_id=user.id,
-            description=description,
-            photo_id=photo_id,
-            status=status,
-            created_at=datetime.now(MOSCOW_TZ),
-            updated_at=datetime.now(MOSCOW_TZ),
-        )
-        session.add(ticket)
-        session.flush()
+                notification = Notification(
+                    user_id=user.id,
+                    message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
+                    created_at=datetime.now(MOSCOW_TZ),
+                    is_read=0,
+                    ticket_id=ticket.id,  # Указываем ticket_id
+                )
+                session.add(notification)
+                session.commit()
 
-        notification = Notification(
-            user_id=user.id,
-            message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
-            created_at=datetime.now(MOSCOW_TZ),
-            is_read=0,
-            ticket_id=ticket.id,  # Указываем ticket_id
-        )
-        session.add(notification)
-        session.commit()
-
-        admin_message = (
-            f"Новая заявка #{ticket.id}!\n"
-            f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
-            f"Описание: {description}\n"
-            f"Статус: {ticket.status.value}"
-            + (f"\nФото: {'Есть' if photo_id else 'Отсутствует'}" if photo_id else "")
-        )
-        logger.info(
-            f"Заявка создана: пользователь {telegram_id}, ID заявки {ticket.id}, photo_id={photo_id or 'без фото'}"
-        )
-        return ticket, admin_message, session
+                admin_message = (
+                    f"Новая заявка #{ticket.id}!\n"
+                    f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
+                    f"Описание: {description}\n"
+                    f"Статус: {ticket.status.value}"
+                    + (
+                        f"\nФото: {'Есть' if photo_id else 'Отсутствует'}"
+                        if photo_id
+                        else ""
+                    )
+                )
+                logger.info(
+                    f"Заявка создана: пользователь {telegram_id}, ID заявки {ticket.id}, photo_id={photo_id or 'без фото'}"
+                )
+                return ticket, admin_message, session
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < retries - 1:
+                    logger.warning(
+                        f"Попытка {attempt + 1}: база данных заблокирована, повтор через 100 мс"
+                    )
+                    session.rollback()
+                    time.sleep(0.1)
+                    continue
     except IntegrityError as e:
         session.rollback()
         logger.error(

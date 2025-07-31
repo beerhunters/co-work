@@ -26,4 +26,5 @@ RUN chown -R appuser:appuser /app
 # Переключаемся на пользователя приложения
 USER appuser
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "web.app:app"]
+# Запускаем приложение с Gunicorn: 4 процесса, 2 потока на процесс, порт 5001
+CMD ["gunicorn", "-w", "4", "--threads", "2", "-b", "0.0.0.0:5001", "web.app:app"]
