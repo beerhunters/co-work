@@ -25,7 +25,18 @@
                 </thead>
                 <tbody id="notifications-table-body">
                     {% for notification in notifications %}
-                    <tr class="{{ 'table-info' if not notification.is_read else '' }}" data-notification-id="{{ notification.id }}">
+                    <tr class="{{ 'table-info' if not notification.is_read else '' }}"
+                        data-notification-id="{{ notification.id }}"
+                        {% if notification.user_id %}
+                            onclick="redirectToTarget({{ notification.id }}, '/user/{{ notification.user_id }}')"
+                            style="cursor: pointer;"
+                        {% elif notification.booking_id %}
+                            onclick="redirectToTarget({{ notification.id }}, '/booking/{{ notification.booking_id }}')"
+                            style="cursor: pointer;"
+                        {% elif notification.ticket_id %}
+                            onclick="redirectToTarget({{ notification.id }}, '/ticket/{{ notification.ticket_id }}')"
+                            style="cursor: pointer;"
+                        {% endif %}>
                         <td>{{ notification.id }}</td>
                         <td>{{ notification.message }}</td>
                         <td>{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
@@ -38,7 +49,8 @@
                         </td>
                         <td>
                             {% if not notification.is_read %}
-                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="markSingleNotificationRead({{ notification.id }})">
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        onclick="markSingleNotificationRead({{ notification.id }}); event.stopPropagation();">
                                     <i class="fas fa-check"></i> Прочитать
                                 </button>
                             {% endif %}
@@ -56,7 +68,9 @@
 </div>
 
 <script>
-// Функция для пометки всех уведомлений как прочитанных на странице
+/**
+ * Помечает все уведомления как прочитанные на странице.
+ */
 function markAllNotificationsReadPage() {
     const button = event.target.closest('button');
     const originalText = button.innerHTML;
@@ -111,7 +125,10 @@ function markAllNotificationsReadPage() {
     });
 }
 
-// Функция для пометки одного уведомления как прочитанного
+/**
+ * Помечает одно уведомление как прочитанное.
+ * @param {number} notificationId - ID уведомления.
+ */
 function markSingleNotificationRead(notificationId) {
     const button = event.target.closest('button');
     const row = button.closest('tr');
@@ -157,6 +174,37 @@ function markSingleNotificationRead(notificationId) {
         // Восстанавливаем кнопку
         button.innerHTML = originalText;
         button.disabled = false;
+    });
+}
+
+/**
+ * Переход на целевую страницу с пометкой уведомления как прочитанного.
+ * @param {number} notificationId - ID уведомления.
+ * @param {string} targetUrl - URL для перехода.
+ */
+function redirectToTarget(notificationId, targetUrl) {
+    fetch(`/notifications/mark_read/${notificationId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Переходим на целевую страницу
+            window.location.href = targetUrl;
+            // Обновляем счетчик в навбаре
+            if (typeof loadNotifications === 'function') {
+                loadNotifications();
+            }
+        } else {
+            showAlert('danger', 'Произошла ошибка при обновлении уведомления');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        showAlert('danger', 'Произошла ошибка при переходе');
     });
 }
 </script>

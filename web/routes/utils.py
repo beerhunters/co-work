@@ -155,7 +155,7 @@ def get_recent_notifications(limit: int = 5) -> List[Dict[str, Any]]:
 
     Example:
         >>> get_recent_notifications(2)
-        [{'id': 1, 'message': 'New user', 'created_at': '2025-07-30 13:00', ...}, ...]
+        [{'id': 1, 'message': 'Новая заявка #1', 'created_at': '2025-07-30 13:00', ...}, ...]
     """
     notifications = (
         db.session.query(Notification)
@@ -167,12 +167,16 @@ def get_recent_notifications(limit: int = 5) -> List[Dict[str, Any]]:
     for n in notifications:
         notification_type = "general"
         target_url = "/notifications"
-        if "Новый пользователь:" in n.message:
+        if "Новый пользователь:" in n.message and n.user_id:
             notification_type = "user"
             target_url = f"/user/{n.user_id}"
         elif "Новая бронь" in n.message and n.booking_id:
             notification_type = "booking"
             target_url = f"/booking/{n.booking_id}"
+        elif "Новая заявка" in n.message and n.ticket_id:
+            notification_type = "ticket"
+            target_url = f"/ticket/{n.ticket_id}"
+
         result.append(
             {
                 "id": n.id,
