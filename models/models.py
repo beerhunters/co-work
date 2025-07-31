@@ -75,6 +75,9 @@ class User(Base):
     username = Column(String)
     successful_bookings = Column(Integer, default=0)
     language_code = Column(String, default="ru")
+    invited_count = Column(
+        Integer, default=0
+    )  # Поле для подсчёта приглашённых пользователей
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
     avatar = Column(String, nullable=True)
@@ -295,6 +298,7 @@ def check_and_add_user(
                 username=username,
                 first_join_time=datetime.now(MOSCOW_TZ),
                 referrer_id=referrer_id,
+                invited_count=0,  # Инициализация поля invited_count
             )
             session.add(user)
             session.commit()
@@ -354,6 +358,7 @@ def add_user(
                 username=username,
                 successful_bookings=0,
                 language_code="ru",
+                invited_count=0,  # Инициализация поля invited_count
                 reg_date=reg_date or datetime.now(MOSCOW_TZ),
                 agreed_to_terms=(
                     agreed_to_terms if agreed_to_terms is not None else False
@@ -363,6 +368,18 @@ def add_user(
             )
             session.add(user)
             session.flush()
+
+        # Если регистрация завершена (указаны full_name, phone, email), увеличиваем invited_count реферера
+        if full_name and phone and email and user.referrer_id:
+            referrer = session.query(User).filter_by(id=user.referrer_id).first()
+            if referrer:
+                referrer.invited_count += 1
+                session.add(referrer)
+                logger.info(
+                    f"Увеличен invited_count для пользователя {referrer.telegram_id} "
+                    f"до {referrer.invited_count}"
+                )
+
         if full_name and phone and email:
             notification = Notification(
                 user_id=user.id,

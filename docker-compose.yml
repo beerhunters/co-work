@@ -10,6 +10,7 @@ services:
       - YOKASSA_SECRET_KEY=${YOKASSA_SECRET_KEY}
       - RUBITIME_API_KEY=${RUBITIME_API_KEY}
       - BOT_LINK=${BOT_LINK}
+      - INVITE_LINK=${INVITE_LINK}
     volumes:
       - ./data:/data
       - ./utils:/app/utils

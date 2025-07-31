@@ -158,7 +158,13 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         logger.debug(f"Пользователь {message.from_user.id} не завершил регистрацию")
         welcome_text = welcome_message
         if ref_id:
-            welcome_text += f"\n\nВы были приглашены пользователем с ID {ref_id}!"
+            referrer = get_user_by_telegram_id(ref_id)
+            referrer_username = (
+                f"@{referrer.username}"
+                if referrer and referrer.username
+                else f"ID {ref_id}"
+            )
+            welcome_text += f"\n\nВы были приглашены пользователем {referrer_username}!"
         await message.answer(
             welcome_text,
             reply_markup=create_register_keyboard(),
@@ -309,6 +315,16 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
     middle_name = name_parts[2] if len(name_parts) > 2 else "Не указано"
 
     try:
+        user = get_user_by_telegram_id(message.from_user.id)
+        referrer_username = None
+        if user and user.referrer_id:
+            referrer = get_user_by_telegram_id(user.referrer_id)
+            referrer_username = (
+                f"@{referrer.username}"
+                if referrer and referrer.username
+                else f"ID {user.referrer_id}"
+            )
+
         add_user(
             telegram_id=message.from_user.id,
             full_name=full_name,
@@ -346,10 +362,6 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:
-                user = get_user_by_telegram_id(message.from_user.id)
-                referrer_info = (
-                    f"\nПригласивший: {user.referrer_id}" if user.referrer_id else ""
-                )
                 notification = (
                     "<b>===👤 Новый резидент ✅ ===</b>\n\n"
                     f"Фамилия: <code>{last_name}</code>\n"
@@ -358,8 +370,9 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
                     f"<b>🎟️ TG: </b>@{message.from_user.username or 'Не указано'}\n"
                     f"<b>☎️ Телефон: </b><code>{data['phone']}</code>\n"
                     f"<b>📨 Email: </b><code>{email}</code>"
-                    f"{referrer_info}"
                 )
+                if referrer_username:
+                    notification += f"\n<b>Пригласивший: </b>{referrer_username}"
                 await bot.send_message(
                     chat_id=ADMIN_TELEGRAM_ID, text=notification, parse_mode="HTML"
                 )
