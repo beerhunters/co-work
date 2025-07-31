@@ -65,12 +65,23 @@ def init_ticket_routes(app: Flask) -> None:
         if not ticket:
             flash("Заявка не найдена", "error")
             return redirect(url_for("tickets"))
+
+        # Преобразование времени в московский часовой пояс
+        created_at_msk = (
+            ticket.created_at.astimezone(MOSCOW_TZ) if ticket.created_at else None
+        )
+        updated_at_msk = (
+            ticket.updated_at.astimezone(MOSCOW_TZ) if ticket.updated_at else None
+        )
+
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
             "ticket_detail.html",
             ticket=ticket,
             user=ticket.user,
+            created_at_msk=created_at_msk,
+            updated_at_msk=updated_at_msk,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
@@ -92,26 +103,64 @@ def init_ticket_routes(app: Flask) -> None:
             flash("Заявка не найдена", "error")
             return redirect(url_for("tickets"))
 
+        if ticket.status == TicketStatus.CLOSED:
+            flash("Заявка закрыта и не может быть изменена", "warning")
+            return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+
         if request.method == "POST":
             try:
                 status = request.form.get("status")
                 comment = request.form.get("comment")
 
-                if status == "закрыта" and not comment:
+                # Проверка недопустимого перехода назад на статус "Открыта"
+                if ticket.status != TicketStatus.OPEN and status == "Открыта":
+                    flash("Нельзя вернуть статус 'Открыта' после изменения", "error")
+                    return render_template(
+                        "ticket_detail.html",
+                        ticket=ticket,
+                        user=ticket.user,
+                        created_at_msk=(
+                            ticket.created_at.astimezone(MOSCOW_TZ)
+                            if ticket.created_at
+                            else None
+                        ),
+                        updated_at_msk=(
+                            ticket.updated_at.astimezone(MOSCOW_TZ)
+                            if ticket.updated_at
+                            else None
+                        ),
+                        unread_notifications=get_unread_notifications_count(),
+                        recent_notifications=get_recent_notifications(),
+                    )
+
+                # Проверка обязательного комментария для статуса "Закрыта"
+                if status == "Закрыта" and not comment:
                     flash("Комментарий обязателен для закрытия заявки", "error")
                     return render_template(
                         "ticket_detail.html",
                         ticket=ticket,
                         user=ticket.user,
+                        created_at_msk=(
+                            ticket.created_at.astimezone(MOSCOW_TZ)
+                            if ticket.created_at
+                            else None
+                        ),
+                        updated_at_msk=(
+                            ticket.updated_at.astimezone(MOSCOW_TZ)
+                            if ticket.updated_at
+                            else None
+                        ),
                         unread_notifications=get_unread_notifications_count(),
                         recent_notifications=get_recent_notifications(),
                     )
 
+                # Обновление полей
                 ticket.status = TicketStatus(status)
                 ticket.comment = comment
                 ticket.updated_at = datetime.now(MOSCOW_TZ)
                 db.session.commit()
 
+                # Отправка уведомления пользователю
                 user = db.session.get(User, ticket.user_id)
                 message = f"Статус заявки #{ticket.id} изменён на '{status}'"
                 if comment:
@@ -127,7 +176,9 @@ def init_ticket_routes(app: Flask) -> None:
                     )
                     flash("Заявка обновлена, но уведомление не отправлено", "warning")
                 flash("Данные заявки обновлены", "success")
-                logger.info(f"Заявка #{ticket.id} обновлена")
+                logger.info(
+                    f"Заявка #{ticket.id} обновлена, updated_at: {ticket.updated_at}"
+                )
                 return redirect(url_for("ticket_detail", ticket_id=ticket_id))
             except Exception as e:
                 db.session.rollback()
@@ -137,6 +188,16 @@ def init_ticket_routes(app: Flask) -> None:
                     "ticket_detail.html",
                     ticket=ticket,
                     user=ticket.user,
+                    created_at_msk=(
+                        ticket.created_at.astimezone(MOSCOW_TZ)
+                        if ticket.created_at
+                        else None
+                    ),
+                    updated_at_msk=(
+                        ticket.created_at.astimezone(MOSCOW_TZ)
+                        if ticket.updated_at
+                        else None
+                    ),
                     unread_notifications=get_unread_notifications_count(),
                     recent_notifications=get_recent_notifications(),
                 )
@@ -147,6 +208,12 @@ def init_ticket_routes(app: Flask) -> None:
             "ticket_detail.html",
             ticket=ticket,
             user=ticket.user,
+            created_at_msk=(
+                ticket.created_at.astimezone(MOSCOW_TZ) if ticket.created_at else None
+            ),
+            updated_at_msk=(
+                ticket.updated_at.astimezone(MOSCOW_TZ) if ticket.updated_at else None
+            ),
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )

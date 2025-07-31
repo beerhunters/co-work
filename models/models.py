@@ -153,9 +153,9 @@ class Notification(Base):
 class TicketStatus(enum.Enum):
     """Перечисление для статусов заявки"""
 
-    OPEN = "открыта"
-    IN_PROGRESS = "решается"
-    CLOSED = "закрыта"
+    OPEN = "Открыта"
+    IN_PROGRESS = "В работе"
+    CLOSED = "Закрыта"
 
 
 class Ticket(Base):

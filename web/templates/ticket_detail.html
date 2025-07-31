@@ -29,7 +29,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title">Редактирование заявки #{{ ticket.id }}</h3>
+        <h3 class="card-title">{% if ticket.status.value == 'Закрыта' %}Просмотр заявки #{{ ticket.id }}{% else %}Редактирование заявки #{{ ticket.id }}{% endif %}</h3>
     </div>
     <div class="card-body">
         <div class="row">
@@ -49,28 +49,43 @@
                     </div>
                     <div class="form-group">
                         <label>Статус</label>
-                        <select class="form-control" name="status" required>
-                            <option value="открыта" {% if ticket.status.value == 'открыта' %}selected{% endif %}>Открыта</option>
-                            <option value="решается" {% if ticket.status.value == 'решается' %}selected{% endif %}>Решается</option>
-                            <option value="закрыта" {% if ticket.status.value == 'закрыта' %}selected{% endif %}>Закрыта</option>
-                        </select>
+                        {% if ticket.status.value == 'Закрыта' %}
+                            <p>{{ ticket.status.value }}</p>
+                        {% else %}
+                            <select class="form-control" name="status" required>
+                                {% if ticket.status.value == 'Открыта' %}
+                                    <option value="Открыта" selected>Открыта</option>
+                                    <option value="В работе">В работе</option>
+                                    <option value="Закрыта">Закрыта</option>
+                                {% else %}
+                                    <option value="В работе" selected>В работе</option>
+                                    <option value="Закрыта">Закрыта</option>
+                                {% endif %}
+                            </select>
+                        {% endif %}
                     </div>
                     <div class="form-group">
                         <label>Комментарий</label>
-                        <textarea class="form-control" name="comment" rows="4">{{ ticket.comment or '' }}</textarea>
+                        {% if ticket.status.value == 'Закрыта' %}
+                            <p>{{ ticket.comment or 'Не указано' }}</p>
+                        {% else %}
+                            <textarea class="form-control" name="comment" rows="4">{{ ticket.comment or '' }}</textarea>
+                        {% endif %}
                     </div>
                     <div class="form-group">
                         <label>Дата создания</label>
-                        <p>{{ ticket.created_at.astimezone(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.created_at else 'Не указано' }}</p>
+                        <p>{{ created_at_msk.strftime('%Y-%m-%d %H:%M:%S %Z') if created_at_msk else 'Не указано' }}</p>
                     </div>
                     <div class="form-group">
                         <label>Дата обновления</label>
-                        <p>{{ ticket.updated_at.astimezone(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.updated_at else 'Не указано' }}</p>
+                        <p>{{ updated_at_msk.strftime('%Y-%m-%d %H:%M:%S %Z') if updated_at_msk else 'Не указано' }}</p>
                     </div>
                     <div class="form-group" style="margin-bottom: 20px;">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Сохранить
-                        </button>
+                        {% if ticket.status.value != 'Закрыта' %}
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Сохранить
+                            </button>
+                        {% endif %}
                         <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ url_for('tickets') }}'">
                             <i class="fas fa-times"></i> Закрыть
                         </button>
@@ -85,7 +100,7 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Установка фокуса на поле комментария при загрузке
+    // Установка фокуса на поле комментария при загрузке, если заявка не закрыта
     const commentField = document.querySelector('textarea[name="comment"]');
     if (commentField) {
         commentField.focus();
