@@ -78,6 +78,9 @@ class User(Base):
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
     avatar = Column(String, nullable=True)
+    referrer_id = Column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )  # Поле для реферального ID
     notifications = relationship(
         "Notification",
         back_populates="user",
@@ -277,7 +280,7 @@ def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
 
 
 def check_and_add_user(
-    telegram_id: int, username: Optional[str] = None
+    telegram_id: int, username: Optional[str] = None, referrer_id: Optional[int] = None
 ) -> Tuple[Optional[User], bool]:
     """Проверяет, существует ли пользователь в БД, и добавляет его, если не существует."""
     session = Session()
@@ -291,6 +294,7 @@ def check_and_add_user(
                 telegram_id=telegram_id,
                 username=username,
                 first_join_time=datetime.now(MOSCOW_TZ),
+                referrer_id=referrer_id,
             )
             session.add(user)
             session.commit()
@@ -312,6 +316,7 @@ def add_user(
     reg_date: Optional[datetime] = None,
     agreed_to_terms: Optional[bool] = None,
     avatar: Optional[str] = None,
+    referrer_id: Optional[int] = None,
 ) -> None:
     """Добавление или обновление пользователя в БД и создание уведомления."""
     session = Session()
@@ -336,6 +341,8 @@ def add_user(
                 logger.debug(
                     f"Обновлён аватар для пользователя {telegram_id}: {avatar}"
                 )
+            if referrer_id is not None:
+                user.referrer_id = referrer_id
         else:
             logger.info(f"Создание нового пользователя {telegram_id}")
             user = User(
@@ -352,6 +359,7 @@ def add_user(
                     agreed_to_terms if agreed_to_terms is not None else False
                 ),
                 avatar=avatar,
+                referrer_id=referrer_id,
             )
             session.add(user)
             session.flush()

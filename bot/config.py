@@ -27,7 +27,6 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 RULES = "https://parta-works.ru/main_rules"
 
 # btn_back = ⬅️ Назад
-# register_guest_button = 👥 Регистрация гостя
 # print_button = 🖨️ Печать(pdf, doc, docx)
 # quiz_button = 🧠 Квиз
 # rules_button = 📄 Общие правила
@@ -44,6 +43,11 @@ def create_user_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📍 Забронировать", callback_data="booking")],
             [InlineKeyboardButton(text="🛠️ Helpdesk", callback_data="helpdesk")],
             [InlineKeyboardButton(text="❔ Информация", callback_data="info")],
+            [
+                InlineKeyboardButton(
+                    text="👥 Пригласить друга", callback_data="invite_friend"
+                )
+            ],
         ]
     )
     return keyboard

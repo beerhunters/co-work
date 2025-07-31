@@ -4,15 +4,19 @@ from datetime import datetime
 
 import pytz
 from aiogram import Router, Bot, Dispatcher, F
-from aiogram.filters import Command
+from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from dotenv import load_dotenv
 
 from bot.config import create_user_keyboard, create_back_keyboard, RULES
-from models.models import add_user, check_and_add_user
+from models.models import add_user, check_and_add_user, get_user_by_telegram_id
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -22,11 +26,15 @@ load_dotenv()
 router = Router()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+BOT_LINK = os.getenv("BOT_LINK")
+INVITE_LINK = os.getenv("INVITE_LINK")
 
 
 def create_register_keyboard() -> InlineKeyboardMarkup:
     """
     Создаёт инлайн-клавиатуру для начала регистрации.
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопкой "Начать регистрацию".
     """
     logger.debug("Создание инлайн-клавиатуры для регистрации")
     keyboard = InlineKeyboardMarkup(
@@ -44,11 +52,33 @@ def create_register_keyboard() -> InlineKeyboardMarkup:
 def create_agreement_keyboard() -> InlineKeyboardMarkup:
     """
     Создаёт инлайн-клавиатуру для подтверждения согласия с правилами.
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопкой "Согласен".
     """
     logger.debug("Создание инлайн-клавиатуры для согласия с правилами")
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Согласен", callback_data="agree_to_terms")]
+        ]
+    )
+    return keyboard
+
+
+def create_invite_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру для отправки реферальной ссылки с кнопкой шаринга.
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с кнопкой для шаринга и возврата в меню.
+    """
+    logger.debug("Создание инлайн-клавиатуры для реферальной ссылки")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Поделиться с другом", callback_data="share_invite"
+                )
+            ],
+            [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
         ]
     )
     return keyboard
@@ -65,7 +95,7 @@ class Registration(StatesGroup):
 
 welcome_message = (
     "🌟 <b>Добро пожаловать в PARTA!</b> 🌟\n\n"
-    "Мы рады видеть вас в нашем уютном коворкинге! Этот бот создан, чтобы сделать ваше пребывание комфортным и удобным.Что я умею:\n\n"
+    "Мы рады видеть вас в нашем уютном коворкинге! Этот бот создан, чтобы сделать ваше пребывание комфортным и удобным. Что я умею:\n\n"
     "📍 <i>Бронировать место</i> — выберите тариф и дату для работы в опенспейсе или переговорной, оплатите прямо здесь!\n\n"
     "🛠 <i>Helpdesk</i> — оставьте заявку, если что-то сломалось или нужна помощь.\n\n"
     "❔ <i>Информация</i> — узнайте о Wi-Fi, правилах коворкинга и актуальных новостях.\n\n"
@@ -73,22 +103,38 @@ welcome_message = (
 )
 
 
-@router.message(Command("start"))
+@router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     """
-    Обработчик команды /start.
+    Обработчик команды /start с реферальным параметром или без него.
 
-    Проверяет регистрацию пользователя и предлагает начать регистрацию, если она не завершена.
+    Args:
+        message: Входящее сообщение.
+        state: Контекст состояния FSM.
     """
-    logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+    user_id = message.from_user.id
+    text_parts = message.text.split(maxsplit=1)
+    logger.info(f"/start от {user_id}, текст: {message.text}")
+
     await state.clear()
+
     if not message.from_user:
         logger.warning("Не удалось определить пользователя для команды /start")
         await message.answer("Не удалось определить пользователя.")
         return
 
+    # Извлекаем реферальный ID из команды, если он есть
+    ref_id = None
+    if len(text_parts) > 1:
+        try:
+            ref_id = int(text_parts[1])
+        except ValueError:
+            logger.warning(f"Некорректный реферальный ID в команде: {message.text}")
+
     result = check_and_add_user(
-        telegram_id=message.from_user.id, username=message.from_user.username
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        referrer_id=ref_id,
     )
 
     if not result:
@@ -110,19 +156,60 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         )
     else:
         logger.debug(f"Пользователь {message.from_user.id} не завершил регистрацию")
+        welcome_text = welcome_message
+        if ref_id:
+            welcome_text += f"\n\nВы были приглашены пользователем с ID {ref_id}!"
         await message.answer(
-            welcome_message,
+            welcome_text,
             reply_markup=create_register_keyboard(),
             parse_mode="HTML",
         )
+
+
+@router.callback_query(F.data == "invite_friend")
+async def invite_friend(
+    callback_query: CallbackQuery, state: FSMContext, bot: Bot
+) -> None:
+    """
+    Обработчик нажатия кнопки 'Поделиться с другом'. Отправляет реферальную ссылку через шаринг.
+
+    Args:
+        callback_query: Callback-запрос.
+        state: Контекст состояния FSM.
+        bot: Экземпляр бота.
+    """
+    user_id = callback_query.from_user.id
+    deeplink = f"{INVITE_LINK}?start={user_id}"
+    share_text = (
+        f"Присоединяйтесь к PARTA! Уютный коворкинг с удобным бронированием мест. "
+        f"Перейдите по ссылке для регистрации: {deeplink}"
+    )
+    logger.info(
+        f"Пользователь {user_id} инициировал шаринг реферальной ссылки: {deeplink}"
+    )
+
+    await callback_query.message.delete()
+    await callback_query.message.answer(
+        text="Выберите, с кем поделиться ссылкой:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Поделиться", switch_inline_query=share_text
+                    )
+                ],
+                [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
 
 
 @router.callback_query(F.data == "start_registration")
 async def start_registration(callback_query: CallbackQuery, state: FSMContext) -> None:
     """
     Обработчик нажатия кнопки "Начать регистрацию".
-
-    Запрашивает подтверждение согласия с обработкой данных и правилами коворкинга.
     """
     logger.info(f"Начало регистрации для пользователя {callback_query.from_user.id}")
     await callback_query.message.answer(
@@ -138,8 +225,6 @@ async def start_registration(callback_query: CallbackQuery, state: FSMContext) -
 async def agree_to_terms(callback_query: CallbackQuery, state: FSMContext) -> None:
     """
     Обработчик нажатия кнопки "Согласен".
-
-    Обновляет сообщение, добавляя зелёную галочку, и запрашивает ФИО.
     """
     logger.info(f"Пользователь {callback_query.from_user.id} согласился с правилами")
     try:
@@ -170,8 +255,6 @@ async def agree_to_terms(callback_query: CallbackQuery, state: FSMContext) -> No
 async def handle_invalid_agreement(message: Message, state: FSMContext) -> None:
     """
     Обработчик некорректного ввода на этапе согласия.
-
-    Повторно запрашивает согласие.
     """
     logger.warning(
         f"Некорректный ввод на этапе согласия от пользователя {message.from_user.id}"
@@ -263,6 +346,10 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:
+                user = get_user_by_telegram_id(message.from_user.id)
+                referrer_info = (
+                    f"\nПригласивший: {user.referrer_id}" if user.referrer_id else ""
+                )
                 notification = (
                     "<b>===👤 Новый резидент ✅ ===</b>\n\n"
                     f"Фамилия: <code>{last_name}</code>\n"
@@ -271,6 +358,7 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
                     f"<b>🎟️ TG: </b>@{message.from_user.username or 'Не указано'}\n"
                     f"<b>☎️ Телефон: </b><code>{data['phone']}</code>\n"
                     f"<b>📨 Email: </b><code>{email}</code>"
+                    f"{referrer_info}"
                 )
                 await bot.send_message(
                     chat_id=ADMIN_TELEGRAM_ID, text=notification, parse_mode="HTML"
@@ -304,7 +392,7 @@ async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data == "main_menu")
-async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
+async def main_menu(callback_query: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback_query.message.delete()
     await callback_query.message.answer(
