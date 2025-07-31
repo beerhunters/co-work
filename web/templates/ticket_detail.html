@@ -61,11 +61,11 @@
                     </div>
                     <div class="form-group">
                         <label>Дата создания</label>
-                        <p>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.created_at else 'Не указано' }}</p>
+                        <p>{{ ticket.created_at.astimezone(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.created_at else 'Не указано' }}</p>
                     </div>
                     <div class="form-group">
                         <label>Дата обновления</label>
-                        <p>{{ ticket.updated_at.strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.updated_at else 'Не указано' }}</p>
+                        <p>{{ ticket.updated_at.astimezone(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d %H:%M:%S %Z') if ticket.updated_at else 'Не указано' }}</p>
                     </div>
                     <div class="form-group" style="margin-bottom: 20px;">
                         <button type="submit" class="btn btn-primary">

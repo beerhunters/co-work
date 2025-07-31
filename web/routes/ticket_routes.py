@@ -2,6 +2,7 @@ from flask import Flask, request, render_template, redirect, url_for, flash
 from flask_login import login_required
 from datetime import datetime
 from typing import Any
+import pytz
 
 from models.models import Ticket, TicketStatus, User
 from web.routes.utils import (
@@ -13,6 +14,9 @@ from web.app import db
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+# Московский часовой пояс
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
 def init_ticket_routes(app: Flask) -> None:
@@ -105,7 +109,7 @@ def init_ticket_routes(app: Flask) -> None:
 
                 ticket.status = TicketStatus(status)
                 ticket.comment = comment
-                ticket.updated_at = datetime.utcnow()
+                ticket.updated_at = datetime.now(MOSCOW_TZ)
                 db.session.commit()
 
                 user = db.session.get(User, ticket.user_id)
