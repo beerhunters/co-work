@@ -1,6 +1,8 @@
 import asyncio
 import os
 from typing import Any, List
+from sqlite3 import OperationalError
+import time
 
 from aiogram.types import FSInputFile
 from aiogram.utils.media_group import MediaGroupBuilder
@@ -9,7 +11,7 @@ from flask_login import login_required
 from sqlalchemy import desc
 from werkzeug.utils import secure_filename
 
-from models.models import User, Newsletter
+from models.models import User, Newsletter, Session
 from utils.bot_instance import get_bot
 from utils.logger import setup_logger
 from web.app import db, UPLOAD_FOLDER, MAX_FILE_SIZE
@@ -24,7 +26,15 @@ logger = setup_logger(__name__)
 
 
 def init_newsletter_routes(app: Flask) -> None:
-    """Инициализация маршрутов для работы с рассылками."""
+    """
+    Инициализация маршрутов для работы с рассылками.
+
+    Args:
+        app: Экземпляр Flask-приложения.
+
+    Notes:
+        Регистрирует маршруты для создания рассылок, просмотра истории и очистки истории.
+    """
 
     @app.route("/newsletter", methods=["GET", "POST"])
     @login_required
@@ -34,6 +44,11 @@ def init_newsletter_routes(app: Flask) -> None:
 
         Returns:
             Рендеринг шаблона newsletter.html или JSON-ответ.
+
+        Notes:
+            Асимптотическая сложность:
+            - GET: O(n) для выборки всех пользователей.
+            - POST: O(n) для выборки пользователей и отправки сообщений (n — количество пользователей).
         """
         try:
             if request.method == "GET":
@@ -149,6 +164,9 @@ def init_newsletter_routes(app: Flask) -> None:
 
                 Returns:
                     Список ID пользователей, которым не удалось отправить сообщение.
+
+                Notes:
+                    Асимптотическая сложность: O(n) для отправки сообщений (n — количество пользователей).
                 """
                 failed_users = []
                 bot = get_bot()
@@ -269,6 +287,9 @@ def init_newsletter_routes(app: Flask) -> None:
 
         Returns:
             Рендеринг шаблона newsletters.html с данными рассылок.
+
+        Notes:
+            Асимптотическая сложность: O(n) для выборки всех рассылок (n — количество рассылок).
         """
         newsletters = (
             db.session.query(Newsletter).order_by(desc(Newsletter.created_at)).all()
@@ -281,3 +302,50 @@ def init_newsletter_routes(app: Flask) -> None:
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
+
+    @app.route("/newsletters/clear", methods=["POST"])
+    @login_required
+    def clear_newsletters() -> Any:
+        """
+        Очищает историю всех рассылок из базы данных.
+
+        Returns:
+            JSON-ответ с результатом операции.
+
+        Notes:
+            Выполняет до 3 попыток в случае ошибки "database is locked".
+            Асимптотическая сложность: O(n) для удаления всех записей (n — количество рассылок).
+            Память: O(1), так как записи удаляются без загрузки в память.
+        """
+        session = Session()
+        retries = 3
+        for attempt in range(retries):
+            try:
+                session.query(Newsletter).delete()
+                session.commit()
+                logger.info("История рассылок успешно очищена")
+                return jsonify(
+                    {"status": "success", "message": "История рассылок очищена"}
+                )
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < retries - 1:
+                    session.rollback()
+                    time.sleep(0.1)  # Ожидание 100 мс перед повторной попыткой
+                    continue
+                session.rollback()
+                logger.error(f"Ошибка при очистке истории рассылок: {str(e)}")
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Ошибка при очистке истории рассылок",
+                        }
+                    ),
+                    500,
+                )
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Ошибка при очистке истории рассылок: {str(e)}")
+                return jsonify({"status": "error", "message": f"Ошибка: {str(e)}"}), 500
+            finally:
+                session.close()

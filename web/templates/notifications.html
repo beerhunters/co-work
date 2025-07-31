@@ -2,72 +2,104 @@
 {% block title %}Уведомления{% endblock %}
 {% block content_title %}Уведомления{% endblock %}
 {% block content %}
+<style>
+    .table-container {
+        max-height: 600px;
+        overflow-y: auto;
+        margin-top: 1rem;
+    }
+</style>
+
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Список уведомлений</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-primary" onclick="markAllNotificationsReadPage()">
+            <button type="button" class="btn btn-sm btn-primary me-2" onclick="markAllNotificationsReadPage()">
                 <i class="fas fa-check-double me-1"></i>Отметить все как прочитанные
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" id="clearNotificationsBtn">
+                <i class="fas fa-trash me-1"></i>Очистить список уведомлений
             </button>
         </div>
     </div>
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Сообщение</th>
-                        <th>Дата создания</th>
-                        <th>Статус</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="notifications-table-body">
-                    {% for notification in notifications %}
-                    <tr class="{{ 'table-info' if not notification.is_read else '' }}"
-                        data-notification-id="{{ notification.id }}"
-                        {% if notification.user_id %}
-                            onclick="redirectToTarget({{ notification.id }}, '/user/{{ notification.user_id }}')"
-                            style="cursor: pointer;"
-                        {% elif notification.booking_id %}
-                            onclick="redirectToTarget({{ notification.id }}, '/booking/{{ notification.booking_id }}')"
-                            style="cursor: pointer;"
-                        {% elif notification.ticket_id %}
-                            onclick="redirectToTarget({{ notification.id }}, '/ticket/{{ notification.ticket_id }}')"
-                            style="cursor: pointer;"
-                        {% endif %}>
-                        <td>{{ notification.id }}</td>
-                        <td>{{ notification.message }}</td>
-                        <td>{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td>
-                            {% if notification.is_read %}
-                                <span class="badge bg-success">Прочитано</span>
-                            {% else %}
-                                <span class="badge bg-warning">Непрочитано</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if not notification.is_read %}
-                                <button type="button" class="btn btn-sm btn-outline-primary"
-                                        onclick="markSingleNotificationRead({{ notification.id }}); event.stopPropagation();">
-                                    <i class="fas fa-check"></i> Прочитать
-                                </button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="text-center text-muted">Нет уведомлений</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="table-container">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Сообщение</th>
+                            <th>Дата создания</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="notifications-table-body">
+                        {% for notification in notifications %}
+                        <tr class="{{ 'table-info' if not notification.is_read else '' }}"
+                            data-notification-id="{{ notification.id }}"
+                            {% if notification.user_id %}
+                                onclick="redirectToTarget({{ notification.id }}, '/user/{{ notification.user_id }}')"
+                                style="cursor: pointer;"
+                            {% elif notification.booking_id %}
+                                onclick="redirectToTarget({{ notification.id }}, '/booking/{{ notification.booking_id }}')"
+                                style="cursor: pointer;"
+                            {% elif notification.ticket_id %}
+                                onclick="redirectToTarget({{ notification.id }}, '/ticket/{{ notification.ticket_id }}')"
+                                style="cursor: pointer;"
+                            {% endif %}>
+                            <td>{{ notification.id }}</td>
+                            <td>{{ notification.message }}</td>
+                            <td>{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                {% if notification.is_read %}
+                                    <span class="badge bg-success">Прочитано</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Непрочитано</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not notification.is_read %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            onclick="markSingleNotificationRead({{ notification.id }}); event.stopPropagation();">
+                                        <i class="fas fa-check"></i> Прочитать
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">Нет уведомлений</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
+/**
+ * Показывает уведомление Bootstrap.
+ * @param {string} type - Тип уведомления ('success', 'danger').
+ * @param {string} message - Сообщение для отображения.
+ */
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.role = 'alert';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    document.body.prepend(alertDiv);
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
 /**
  * Помечает все уведомления как прочитанные на странице.
  */
@@ -207,5 +239,65 @@ function redirectToTarget(notificationId, targetUrl) {
         showAlert('danger', 'Произошла ошибка при переходе');
     });
 }
+
+/**
+ * Очищает все уведомления.
+ */
+function clearAllNotifications() {
+    const button = document.getElementById('clearNotificationsBtn');
+    const originalText = button.innerHTML;
+
+    if (!confirm('Вы уверены, что хотите удалить все уведомления?')) {
+        return;
+    }
+
+    // Показываем загрузку
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Обработка...';
+    button.disabled = true;
+
+    fetch('/notifications/clear', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Очищаем таблицу
+            const tableBody = document.getElementById('notifications-table-body');
+            tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет уведомлений</td></tr>';
+
+            // Показываем сообщение об успехе
+            showAlert('success', data.message);
+
+            // Обновляем счетчик в навбаре
+            if (typeof loadNotifications === 'function') {
+                loadNotifications();
+            }
+        } else {
+            showAlert('danger', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        showAlert('danger', 'Произошла ошибка при очистке уведомлений');
+    })
+    .finally(() => {
+        // Восстанавливаем кнопку
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+// Привязываем событие клика к кнопке очистки уведомлений
+document.addEventListener('DOMContentLoaded', function() {
+    const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
+    if (clearNotificationsBtn) {
+        clearNotificationsBtn.addEventListener('click', clearAllNotifications);
+    } else {
+        console.error('Кнопка clearNotificationsBtn не найдена');
+    }
+});
 </script>
 {% endblock %}

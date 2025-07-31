@@ -2,8 +2,10 @@ from flask import Flask, render_template, jsonify, flash
 from flask_login import login_required
 from datetime import datetime, timedelta
 from typing import Any
+from sqlite3 import OperationalError
+import time
 
-from models.models import Notification
+from models.models import Notification, Session
 from web.routes.utils import get_unread_notifications_count, get_recent_notifications
 from web.app import db, MOSCOW_TZ
 from utils.logger import setup_logger
@@ -12,7 +14,16 @@ logger = setup_logger(__name__)
 
 
 def init_notification_routes(app: Flask) -> None:
-    """Инициализация маршрутов для работы с уведомлениями."""
+    """
+    Инициализация маршрутов для работы с уведомлениями.
+
+    Args:
+        app: Экземпляр Flask-приложения.
+
+    Notes:
+        Регистрирует маршруты для просмотра, пометки как прочитанных, очистки старых уведомлений
+        и полного удаления уведомлений.
+    """
 
     @app.route("/notifications")
     @login_required
@@ -22,6 +33,9 @@ def init_notification_routes(app: Flask) -> None:
 
         Returns:
             Рендеринг шаблона notifications.html с данными уведомлений.
+
+        Notes:
+            Асимптотическая сложность: O(n) для выборки всех уведомлений (n — количество уведомлений).
         """
         notifications = (
             db.session.query(Notification)
@@ -45,6 +59,9 @@ def init_notification_routes(app: Flask) -> None:
 
         Returns:
             JSON-ответ с результатом операции.
+
+        Notes:
+            Асимптотическая сложность: O(n) для обновления всех непрочитанных уведомлений.
         """
         try:
             updated = (
@@ -78,6 +95,9 @@ def init_notification_routes(app: Flask) -> None:
 
         Returns:
             JSON-ответ с результатом операции.
+
+        Notes:
+            Асимптотическая сложность: O(1) для обновления одной записи.
         """
         try:
             notification = db.session.get(Notification, notification_id)
@@ -108,6 +128,9 @@ def init_notification_routes(app: Flask) -> None:
 
         Returns:
             JSON-ответ с результатом операции.
+
+        Notes:
+            Асимптотическая сложность: O(n) для удаления записей (n — количество уведомлений).
         """
         try:
             threshold = datetime.now(MOSCOW_TZ) - timedelta(days=30)
@@ -128,6 +151,50 @@ def init_notification_routes(app: Flask) -> None:
             logger.error(f"Ошибка при очистке уведомлений: {str(e)}")
             return jsonify({"status": "error", "message": "Ошибка сервера"}), 500
 
+    @app.route("/notifications/clear", methods=["POST"])
+    @login_required
+    def clear_notifications() -> Any:
+        """
+        Очищает все уведомления из базы данных.
+
+        Returns:
+            JSON-ответ с результатом операции.
+
+        Notes:
+            Выполняет до 3 попыток в случае ошибки "database is locked".
+            Асимптотическая сложность: O(n) для удаления всех записей (n — количество уведомлений).
+            Память: O(1), так как записи удаляются без загрузки в память.
+        """
+        session = Session()
+        retries = 3
+        for attempt in range(retries):
+            try:
+                deleted = session.query(Notification).delete()
+                session.commit()
+                logger.info(f"Все уведомления очищены, удалено: {deleted} записей")
+                return jsonify(
+                    {"status": "success", "message": "Все уведомления удалены"}
+                )
+            except OperationalError as e:
+                if "database is locked" in str(e) and attempt < retries - 1:
+                    session.rollback()
+                    time.sleep(0.1)  # Ожидание 100 мс перед повторной попыткой
+                    continue
+                session.rollback()
+                logger.error(f"Ошибка при очистке уведомлений: {str(e)}")
+                return (
+                    jsonify(
+                        {"status": "error", "message": "Ошибка при очистке уведомлений"}
+                    ),
+                    500,
+                )
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Ошибка при очистке уведомлений: {str(e)}")
+                return jsonify({"status": "error", "message": f"Ошибка: {str(e)}"}), 500
+            finally:
+                session.close()
+
     @app.route("/get_notifications", methods=["GET"])
     @login_required
     def get_notifications() -> Any:
@@ -136,6 +203,9 @@ def init_notification_routes(app: Flask) -> None:
 
         Returns:
             JSON-ответ с количеством непрочитанных и последними уведомлениями.
+
+        Notes:
+            Асимптотическая сложность: O(n) для выборки последних уведомлений.
         """
         try:
             unread_count = get_unread_notifications_count()
