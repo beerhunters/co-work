@@ -13,9 +13,7 @@ from aiogram.types import (
 )
 
 from bot.config import create_user_keyboard, create_back_keyboard
-from models.models import (
-    create_ticket,
-)
+from models.models import create_ticket
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -93,6 +91,8 @@ async def start_helpdesk(
         bot: Экземпляр бота.
     """
     await state.set_state(TicketForm.DESCRIPTION)
+    # Сохраняем telegram_id пользователя
+    await state.update_data(telegram_id=callback_query.from_user.id)
     await callback_query.message.answer(
         "Опишите вашу проблему или пожелание:",
         reply_markup=create_back_keyboard(),
@@ -207,7 +207,19 @@ async def process_no_photo(
         state: Контекст состояния FSM.
         bot: Экземпляр бота.
     """
-    await save_ticket(callback_query.message, state, bot, photo_id=None)
+    data = await state.get_data()
+    telegram_id = data.get("telegram_id")
+    if not telegram_id:
+        logger.error("Не удалось получить telegram_id из состояния FSM")
+        await callback_query.message.edit_text(
+            text="Ошибка: не удалось определить пользователя. Попробуйте снова.",
+            reply_markup=create_user_keyboard(),
+        )
+        await state.clear()
+        await callback_query.answer()
+        return
+
+    await save_ticket(callback_query.message, state, bot, telegram_id, photo_id=None)
     await callback_query.answer()
 
 
@@ -221,12 +233,27 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot) -> None:
         state: Контекст состояния FSM.
         bot: Экземпляр бота.
     """
+    data = await state.get_data()
+    telegram_id = data.get("telegram_id")
+    if not telegram_id:
+        logger.error("Не удалось получить telegram_id из состояния FSM")
+        await message.answer(
+            text="Ошибка: не удалось определить пользователя. Попробуйте снова.",
+            reply_markup=create_user_keyboard(),
+        )
+        await state.clear()
+        return
+
     photo_id = message.photo[-1].file_id
-    await save_ticket(message, state, bot, photo_id)
+    await save_ticket(message, state, bot, telegram_id, photo_id)
 
 
 async def save_ticket(
-    message: Message, state: FSMContext, bot: Bot, photo_id: Optional[str]
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    telegram_id: int,
+    photo_id: Optional[str],
 ) -> None:
     """
     Сохраняет заявку в БД и отправляет уведомления.
@@ -235,13 +262,14 @@ async def save_ticket(
         message: Входящее сообщение.
         state: Контекст состояния FSM.
         bot: Экземпляр бота.
+        telegram_id: Telegram ID пользователя.
         photo_id: ID фото в Telegram (если есть).
     """
     data = await state.get_data()
     description = data.get("description")
     try:
         ticket, admin_message, session = create_ticket(
-            telegram_id=message.from_user.id,
+            telegram_id=telegram_id,
             description=description,
             photo_id=photo_id,
         )
@@ -250,9 +278,7 @@ async def save_ticket(
                 admin_message or "Ошибка при создании заявки.",
                 reply_markup=create_user_keyboard(),
             )
-            logger.warning(
-                f"Не удалось создать заявку для пользователя {message.from_user.id}"
-            )
+            logger.warning(f"Не удалось создать заявку для пользователя {telegram_id}")
             await state.clear()
             return
 
@@ -274,7 +300,7 @@ async def save_ticket(
                 reply_markup=create_user_keyboard(),
             )
             logger.info(
-                f"Заявка #{ticket.id} создана для пользователя {message.from_user.id}, "
+                f"Заявка #{ticket.id} создана для пользователя {telegram_id}, "
                 f"photo_id={photo_id or 'без фото'}"
             )
         except Exception as e:
@@ -291,7 +317,7 @@ async def save_ticket(
                 session.close()
     except Exception as e:
         logger.error(
-            f"Ошибка при создании заявки для пользователя {message.from_user.id}: {str(e)}"
+            f"Ошибка при создании заявки для пользователя {telegram_id}: {str(e)}"
         )
         await message.answer(
             "Ошибка при создании заявки. Попробуйте позже.",
