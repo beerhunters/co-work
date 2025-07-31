@@ -306,7 +306,7 @@ def init_user_routes(app: Flask) -> None:
     @login_required
     def delete_user(user_id: int) -> Any:
         """
-        Удаление пользователя.
+        Удаление пользователя и связанных данных (уведомления, аватар).
 
         Args:
             user_id: ID пользователя.
@@ -317,6 +317,7 @@ def init_user_routes(app: Flask) -> None:
         user = db.session.get(User, user_id)
         if not user:
             flash("Пользователь не найден")
+            logger.warning(f"Пользователь {user_id} не найден для удаления")
             return redirect(url_for("users"))
         try:
             if user.avatar:
@@ -331,8 +332,8 @@ def init_user_routes(app: Flask) -> None:
                     logger.info(f"Аватар пользователя {user_id} удалён: {avatar_path}")
             db.session.delete(user)
             db.session.commit()
-            flash("Пользователь удалён")
-            logger.info(f"Пользователь {user_id} удалён")
+            flash("Пользователь и связанные данные удалены")
+            logger.info(f"Пользователь {user_id} и связанные уведомления удалены")
         except Exception as e:
             db.session.rollback()
             flash("Ошибка при удалении пользователя")

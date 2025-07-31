@@ -77,8 +77,25 @@ class User(Base):
     language_code = Column(String, default="ru")
     reg_date = Column(DateTime)
     agreed_to_terms = Column(Boolean, default=False)
-    avatar = Column(String, nullable=True)  # Путь к файлу аватара
-    # tickets = relationship("Ticket", back_populates="user")  # Связь с тикетами
+    avatar = Column(String, nullable=True)
+    notifications = relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    bookings = relationship(
+        "Booking",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    tickets = relationship(
+        "Ticket",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Tariff(Base):
@@ -111,7 +128,9 @@ class Booking(Base):
 
     __tablename__ = "bookings"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=False)
     visit_date = Column(Date, nullable=False)
     visit_time = Column(Time, nullable=True)
@@ -122,16 +141,22 @@ class Booking(Base):
     paid = Column(Boolean, default=False)
     rubitime_id = Column(String(100), nullable=True)
     confirmed = Column(Boolean, default=False)
-    user = relationship("User", backref="bookings")
+    user = relationship("User", back_populates="bookings")
     tariff = relationship("Tariff", backref="bookings")
     promocode = relationship("Promocode", backref="promocodes")
+    notifications = relationship(
+        "Notification",
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Newsletter(Base):
     __tablename__ = "newsletters"
     id = Column(Integer, primary_key=True)
     message = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.now(MOSCOW_TZ))
+    created_at = Column(DateTime, default=lambda: datetime.now(MOSCOW_TZ))
     recipient_count = Column(Integer, nullable=False)
 
 
@@ -140,21 +165,27 @@ class Notification(Base):
 
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     message = Column(String, nullable=False)
     created_at = Column(
         DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
     )
     is_read = Column(Integer, default=0, nullable=False)
-    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
-    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
-    user = relationship("User", backref="notifications")
-    booking = relationship("Booking", backref="notifications")
-    ticket = relationship("Ticket", backref="notifications")
+    booking_id = Column(
+        Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=True
+    )
+    ticket_id = Column(
+        Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True
+    )
+    user = relationship("User", back_populates="notifications")
+    booking = relationship("Booking", back_populates="notifications")
+    ticket = relationship("Ticket", back_populates="notifications")
 
 
 class TicketStatus(enum.Enum):
-    """Перечисление для статусов заявки"""
+    """Перечисление для статусов заявки."""
 
     OPEN = "Открыта"
     IN_PROGRESS = "В работе"
@@ -162,25 +193,33 @@ class TicketStatus(enum.Enum):
 
 
 class Ticket(Base):
-    """Модель заявки в системе Helpdesk"""
+    """Модель заявки в системе Helpdesk."""
 
     __tablename__ = "tickets"
-
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    description = Column(String, nullable=False)
-    photo_id = Column(String, nullable=True)  # ID фотографии в Telegram
-    status = Column(Enum(TicketStatus), default=TicketStatus.OPEN, nullable=False)
-    comment = Column(String, nullable=True)  # Комментарий администратора
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-
-    user = relationship("User", backref="users")  # Связь с таблицей пользователей
-
-    def __repr__(self):
-        return f"<Ticket(id={self.id}, user_id={self.user_id}, status={self.status})>"
+    description = Column(String, nullable=False)
+    photo_id = Column(String, nullable=True)
+    status = Column(Enum(TicketStatus), default=TicketStatus.OPEN, nullable=False)
+    comment = Column(String, nullable=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
+    )
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(MOSCOW_TZ),
+        onupdate=lambda: datetime.now(MOSCOW_TZ),
+        nullable=False,
+    )
+    user = relationship("User", back_populates="tickets")
+    notifications = relationship(
+        "Notification",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 def init_db() -> None:
@@ -230,7 +269,7 @@ def create_admin(admin_login: str, admin_password: str) -> None:
         session.close()
 
 
-def get_user_by_telegram_id(telegram_id) -> Optional[User]:
+def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
     session = Session()
     user = session.query(User).filter_by(telegram_id=telegram_id).first()
     session.close()
@@ -272,7 +311,7 @@ def add_user(
     username: Optional[str] = None,
     reg_date: Optional[datetime] = None,
     agreed_to_terms: Optional[bool] = None,
-    avatar: Optional[str] = None,  # Добавляем параметр avatar
+    avatar: Optional[str] = None,
 ) -> None:
     """Добавление или обновление пользователя в БД и создание уведомления."""
     session = Session()
@@ -498,17 +537,15 @@ def create_ticket(
                 )
                 session.add(ticket)
                 session.flush()
-
                 notification = Notification(
                     user_id=user.id,
                     message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
                     created_at=datetime.now(MOSCOW_TZ),
                     is_read=0,
-                    ticket_id=ticket.id,  # Указываем ticket_id
+                    ticket_id=ticket.id,
                 )
                 session.add(notification)
                 session.commit()
-
                 admin_message = (
                     f"Новая заявка #{ticket.id}!\n"
                     f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
