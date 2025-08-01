@@ -82,7 +82,7 @@ class User(Base):
     agreed_to_terms = Column(Boolean, default=False)
     avatar = Column(String, nullable=True)
     referrer_id = Column(
-        Integer, ForeignKey("users.id"), nullable=True
+        Integer, ForeignKey("users.telegram_id"), nullable=True
     )  # Поле для реферального ID
     notifications = relationship(
         "Notification",
@@ -102,6 +102,44 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    referrer = relationship(
+        "User", remote_side=[telegram_id], backref="invitees"
+    )  # Связь для пригласившего пользователя
+
+    def __repr__(self) -> str:
+        return f"<User {self.telegram_id} - {self.full_name}>"
+
+
+def update_invited_count(user_id: Optional[int]) -> None:
+    """
+    Обновляет количество приглашённых пользователей для пользователя.
+
+    Args:
+        user_id: ID пользователя, для которого обновляется invited_count.
+    """
+    if user_id:
+        session = Session()
+        try:
+            referrer = session.get(User, user_id)
+            if referrer:
+                referrer.invited_count = (
+                    session.query(User).filter_by(referrer_id=user_id).count()
+                )
+                session.commit()
+                logger.info(
+                    f"Обновлён invited_count для пользователя {user_id}: {referrer.invited_count}"
+                )
+            else:
+                logger.warning(
+                    f"Пользователь с ID {user_id} не найден для обновления invited_count"
+                )
+        except Exception as e:
+            session.rollback()
+            logger.error(
+                f"Ошибка при обновлении invited_count для пользователя {user_id}: {str(e)}"
+            )
+        finally:
+            session.close()
 
 
 class Tariff(Base):

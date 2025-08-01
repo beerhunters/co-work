@@ -12,7 +12,7 @@ from flask import (
 )
 from flask_login import login_required
 
-from models.models import User
+from models.models import User, update_invited_count
 from utils.logger import setup_logger
 from web.app import db, AVATAR_FOLDER, MAX_AVATAR_SIZE
 from web.routes.utils import (
@@ -86,10 +86,16 @@ def init_user_routes(app: Flask) -> None:
             db.session.commit()
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
+        referrer_name = (
+            user.referrer.full_name
+            if user.referrer_id and user.referrer
+            else "Не указано"
+        )
         return render_template(
             "user_detail.html",
             user=user,
             edit=False,
+            referrer_name=referrer_name,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
@@ -205,10 +211,16 @@ def init_user_routes(app: Flask) -> None:
                 logger.error(f"Ошибка обновления пользователя {user_id}: {str(e)}")
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
+        referrer_name = (
+            user.referrer.full_name
+            if user.referrer_id and user.referrer
+            else "Не указано"
+        )
         return render_template(
             "user_detail.html",
             user=user,
             edit=True,
+            referrer_name=referrer_name,
             unread_notifications=unread_notifications,
             recent_notifications=recent_notifications,
         )
@@ -320,6 +332,7 @@ def init_user_routes(app: Flask) -> None:
             logger.warning(f"Пользователь {user_id} не найден для удаления")
             return redirect(url_for("users"))
         try:
+            referrer_id = user.referrer_id  # Сохраняем ID пригласившего
             if user.avatar:
                 avatar_filename = (
                     user.avatar.replace("avatars/", "")
@@ -332,6 +345,7 @@ def init_user_routes(app: Flask) -> None:
                     logger.info(f"Аватар пользователя {user_id} удалён: {avatar_path}")
             db.session.delete(user)
             db.session.commit()
+            update_invited_count(referrer_id)  # Обновляем invited_count пригласившего
             flash("Пользователь и связанные данные удалены")
             logger.info(f"Пользователь {user_id} и связанные уведомления удалены")
         except Exception as e:
