@@ -120,7 +120,7 @@ def update_invited_count(user_id: Optional[int]) -> None:
     if user_id:
         session = Session()
         try:
-            referrer = session.get(User, user_id)
+            referrer = session.query(User).filter_by(telegram_id=user_id).first()
             if referrer:
                 referrer.invited_count = (
                     session.query(User).filter_by(referrer_id=user_id).count()
@@ -597,6 +597,129 @@ def get_promocode_by_name(promocode_name: str) -> Optional[Promocode]:
     return promocode
 
 
+def format_ticket_notification(user, ticket_data):
+    """Форматирует красивое уведомление о новом тикете для админа"""
+
+    # Эмодзи для статусов
+    status_emojis = {"OPEN": "🟢", "IN_PROGRESS": "🟡", "CLOSED": "🔴"}
+
+    status = ticket_data.get("status", "OPEN")
+    status_emoji = status_emojis.get(status, "⚪")
+
+    # Обрезаем описание если оно слишком длинное
+    description = ticket_data.get("description", "")
+    if len(description) > 200:
+        description = description[:200] + "..."
+
+    # Информация о фото
+    photo_info = ""
+    if ticket_data.get("photo_id"):
+        photo_info = "\n📸 <b>Прикреплено фото</b>"
+
+    message = f"""🎫 <b>НОВЫЙ ТИКЕТ!</b> {status_emoji}
+
+👤 <b>От пользователя:</b>
+├ <b>Имя:</b> {user.full_name or 'Не указано'}
+├ <b>Телефон:</b> {user.phone or 'Не указано'}
+├ <b>Email:</b> {user.email or 'Не указано'}
+└ <b>Telegram:</b> @{user.username or 'не указан'} (ID: <code>{user.telegram_id}</code>)
+
+📝 <b>Описание проблемы:</b>
+{description}{photo_info}
+
+🏷 <b>Тикет ID:</b> <code>#{ticket_data.get('ticket_id', 'Неизвестно')}</code>
+📊 <b>Статус:</b> {status}
+
+⏰ <i>Время создания: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    return message.strip()
+
+
+# def create_ticket(
+#     telegram_id: int,
+#     description: str,
+#     photo_id: Optional[str] = None,
+#     status: TicketStatus = TicketStatus.OPEN,
+# ) -> Tuple[Optional[Ticket], Optional[str], Optional[SQLAlchemySession]]:
+#     """
+#     Создаёт запись заявки и уведомление в базе данных.
+#
+#     Args:
+#         telegram_id: Telegram ID пользователя.
+#         description: Описание заявки.
+#         photo_id: ID фотографии в Telegram (если есть).
+#         status: Статус заявки (по умолчанию OPEN).
+#
+#     Returns:
+#         Tuple[Optional[Ticket], Optional[str], Optional[SQLAlchemySession]]:
+#             - Объект заявки (или None при ошибке).
+#             - Сообщение для администратора (или сообщение об ошибке).
+#             - Открытая сессия SQLAlchemy (или None, если сессия закрыта).
+#     """
+#     session = Session()
+#     retries = 3
+#     try:
+#         user = session.query(User).filter_by(telegram_id=telegram_id).first()
+#         if not user:
+#             logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
+#             session.close()
+#             return None, "Пользователь не найден", None
+#         for attempt in range(retries):
+#             try:
+#                 ticket = Ticket(
+#                     user_id=user.id,
+#                     description=description,
+#                     photo_id=photo_id,
+#                     status=status,
+#                     created_at=datetime.now(MOSCOW_TZ),
+#                     updated_at=datetime.now(MOSCOW_TZ),
+#                 )
+#                 session.add(ticket)
+#                 session.flush()
+#                 notification = Notification(
+#                     user_id=user.id,
+#                     message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
+#                     created_at=datetime.now(MOSCOW_TZ),
+#                     is_read=False,
+#                     ticket_id=ticket.id,
+#                 )
+#                 session.add(notification)
+#                 session.commit()
+#                 admin_message = (
+#                     f"Новая заявка #{ticket.id}!\n"
+#                     f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
+#                     f"Описание: {description}\n"
+#                     f"Статус: {ticket.status.value}"
+#                     + (
+#                         f"\nФото: {'Есть' if photo_id else 'Отсутствует'}"
+#                         if photo_id
+#                         else ""
+#                     )
+#                 )
+#                 logger.info(
+#                     f"Заявка создана: пользователь {telegram_id}, ID заявки {ticket.id}, photo_id={photo_id or 'без фото'}"
+#                 )
+#                 return ticket, admin_message, session
+#             except OperationalError as e:
+#                 if "database is locked" in str(e) and attempt < retries - 1:
+#                     logger.warning(
+#                         f"Попытка {attempt + 1}: база данных заблокирована, повтор через 100 мс"
+#                     )
+#                     session.rollback()
+#                     time.sleep(0.1)
+#                     continue
+#     except IntegrityError as e:
+#         session.rollback()
+#         logger.error(
+#             f"Ошибка уникальности при создании заявки для пользователя {telegram_id}: {str(e)}"
+#         )
+#         session.close()
+#         return None, "Ошибка при создании заявки", None
+#     except Exception as e:
+#         session.rollback()
+#         logger.error(f"Ошибка создания заявки для пользователя {telegram_id}: {str(e)}")
+#         session.close()
+#         return None, "Ошибка при создании заявки", None
 def create_ticket(
     telegram_id: int,
     description: str,
@@ -626,6 +749,7 @@ def create_ticket(
             logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
             session.close()
             return None, "Пользователь не найден", None
+
         for attempt in range(retries):
             try:
                 ticket = Ticket(
@@ -638,6 +762,7 @@ def create_ticket(
                 )
                 session.add(ticket)
                 session.flush()
+
                 notification = Notification(
                     user_id=user.id,
                     message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
@@ -647,21 +772,23 @@ def create_ticket(
                 )
                 session.add(notification)
                 session.commit()
-                admin_message = (
-                    f"Новая заявка #{ticket.id}!\n"
-                    f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
-                    f"Описание: {description}\n"
-                    f"Статус: {ticket.status.value}"
-                    + (
-                        f"\nФото: {'Есть' if photo_id else 'Отсутствует'}"
-                        if photo_id
-                        else ""
-                    )
+
+                # Используем красивый шаблон для админского уведомления
+                admin_message = format_ticket_notification(
+                    user=user,
+                    ticket_data={
+                        "description": description,
+                        "photo_id": photo_id,
+                        "status": status.value,
+                        "ticket_id": ticket.id,
+                    },
                 )
+
                 logger.info(
                     f"Заявка создана: пользователь {telegram_id}, ID заявки {ticket.id}, photo_id={photo_id or 'без фото'}"
                 )
                 return ticket, admin_message, session
+
             except OperationalError as e:
                 if "database is locked" in str(e) and attempt < retries - 1:
                     logger.warning(
@@ -670,6 +797,9 @@ def create_ticket(
                     session.rollback()
                     time.sleep(0.1)
                     continue
+                else:
+                    raise
+
     except IntegrityError as e:
         session.rollback()
         logger.error(
