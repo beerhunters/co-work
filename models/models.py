@@ -461,7 +461,7 @@ def add_user(
                 user_id=user.id,
                 message=f"Новый пользователь: {full_name}",
                 created_at=datetime.now(MOSCOW_TZ),
-                is_read=0,
+                is_read=False,
             )
             session.add(notification)
             logger.info(
@@ -543,7 +543,7 @@ def create_booking(
                         else ""
                     ),
                     created_at=datetime.now(MOSCOW_TZ),
-                    is_read=0,
+                    is_read=False,
                     booking_id=booking.id,
                 )
                 session.add(notification)
@@ -642,7 +642,7 @@ def create_ticket(
                     user_id=user.id,
                     message=f"Новая заявка #{ticket.id} от {user.full_name or 'пользователя'}: {description[:50]}{'...' if len(description) > 50 else ''}",
                     created_at=datetime.now(MOSCOW_TZ),
-                    is_read=0,
+                    is_read=False,
                     ticket_id=ticket.id,
                 )
                 session.add(notification)
