@@ -19,6 +19,30 @@ from bot.config import create_user_keyboard, create_back_keyboard, RULES
 from models.models import add_user, check_and_add_user, get_user_by_telegram_id
 from utils.logger import setup_logger
 
+
+def format_registration_notification(user, referrer_info=None):
+    """Форматирует красивое уведомление о новой регистрации для админа"""
+
+    # Информация о реферере
+    referrer_text = ""
+    if referrer_info:
+        referrer_text = f"""
+🔗 <b>Пригласил:</b>
+└ {referrer_info.get('username', 'Неизвестно')} (ID: <code>{referrer_info.get('telegram_id', 'Неизвестно')}</code>)"""
+
+    message = f"""🎉 <b>НОВЫЙ ПОЛЬЗОВАТЕЛЬ!</b>
+
+👤 <b>Данные пользователя:</b>
+├ <b>Имя:</b> {user.full_name or 'Не указано'}
+├ <b>Телефон:</b> <code>{user.phone or 'Не указано'}</code>
+├ <b>Email:</b> <code>{user.email or 'Не указано'}</code>
+└ <b>Telegram:</b> @{user.username or 'не указан'} (ID: <code>{user.telegram_id}</code>){referrer_text}
+
+⏰ <i>Время регистрации: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    return message.strip()
+
+
 logger = setup_logger(__name__)
 
 load_dotenv()
@@ -339,6 +363,15 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
             reg_date=datetime.now(MOSCOW_TZ),
             referrer_id=referrer_id,  # Передаем referrer_id явно
         )
+        # Запрашиваем обновлённого пользователя из базы данных
+        user = get_user_by_telegram_id(message.from_user.id)
+        if not user:
+            logger.error(
+                f"Пользователь {message.from_user.id} не найден после обновления"
+            )
+            await message.answer("Ошибка при регистрации. Попробуйте позже.")
+            await state.clear()
+            return
         invite_url = "https://t.me/partacowo"  # Fallback-ссылка на случай ошибки
         try:
             invite_link = await bot.create_chat_invite_link(
@@ -366,22 +399,15 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
         # Отправка уведомления администратору
         if ADMIN_TELEGRAM_ID:
             try:
-                # Разделение ФИО на фамилию, имя и отчество
-                name_parts = full_name.split()
-                last_name = name_parts[0] if len(name_parts) > 0 else "Не указано"
-                first_name = name_parts[1] if len(name_parts) > 1 else "Не указано"
-                middle_name = name_parts[2] if len(name_parts) > 2 else "Не указано"
-                notification = (
-                    "<b>===👤 Новый резидент ✅ ===</b>\n\n"
-                    f"Фамилия: <code>{last_name}</code>\n"
-                    f"Имя: <code>{first_name}</code>\n"
-                    f"Отчество: <code>{middle_name}</code>\n"
-                    f"<b>🎟️ TG: </b>@{message.from_user.username or 'Не указано'}\n"
-                    f"<b>☎️ Телефон: </b><code>{phone}</code>\n"
-                    f"<b>📨 Email: </b><code>{email}</code>"
-                )
+                referrer_info = None
                 if referrer_username:
-                    notification += f"\n<b>Пригласивший: </b>{referrer_username}"
+                    referrer_info = {
+                        "username": referrer_username,
+                        "telegram_id": user.referrer_id,
+                    }
+                notification = format_registration_notification(
+                    user=user, referrer_info=referrer_info
+                )
                 await bot.send_message(
                     chat_id=ADMIN_TELEGRAM_ID, text=notification, parse_mode="HTML"
                 )
