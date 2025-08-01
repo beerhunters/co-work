@@ -204,30 +204,6 @@ class Newsletter(Base):
     recipient_count = Column(Integer, nullable=False)
 
 
-class Notification(Base):
-    """Модель уведомления."""
-
-    __tablename__ = "notifications"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    message = Column(String, nullable=False)
-    created_at = Column(
-        DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
-    )
-    is_read = Column(Integer, default=0, nullable=False)
-    booking_id = Column(
-        Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=True
-    )
-    ticket_id = Column(
-        Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True
-    )
-    user = relationship("User", back_populates="notifications")
-    booking = relationship("Booking", back_populates="notifications")
-    ticket = relationship("Ticket", back_populates="notifications")
-
-
 class TicketStatus(enum.Enum):
     """Перечисление для статусов заявки."""
 
@@ -264,6 +240,30 @@ class Ticket(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+
+class Notification(Base):
+    """Модель уведомления."""
+
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    message = Column(String, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(MOSCOW_TZ), nullable=False
+    )
+    is_read = Column(Boolean, default=False, nullable=False)
+    booking_id = Column(
+        Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=True
+    )
+    ticket_id = Column(
+        Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True
+    )
+    user = relationship("User", back_populates="notifications")
+    booking = relationship("Booking", back_populates="notifications")
+    ticket = relationship("Ticket", back_populates="notifications")
 
 
 def init_db() -> None:

@@ -140,7 +140,7 @@ def get_unread_notifications_count() -> int:
         >>> get_unread_notifications_count()
         5
     """
-    count = db.session.query(Notification).filter_by(is_read=0).count()
+    count = db.session.query(Notification).filter_by(is_read=False).count()
     logger.info(f"Количество непрочитанных уведомлений: {count}")
     return count
 
@@ -189,7 +189,7 @@ def get_recent_notifications(limit: int = 5) -> List[Dict[str, Any]]:
                     if isinstance(n.created_at, datetime)
                     else n.created_at
                 ),
-                "is_read": bool(n.is_read),
+                "is_read": n.is_read,
                 "type": notification_type,
                 "target_url": target_url,
             }

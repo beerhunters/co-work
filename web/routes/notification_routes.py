@@ -66,8 +66,8 @@ def init_notification_routes(app: Flask) -> None:
         try:
             updated = (
                 db.session.query(Notification)
-                .filter_by(is_read=0)
-                .update({"is_read": 1})
+                .filter_by(is_read=False)
+                .update({"is_read": True})
             )
             db.session.commit()
             flash(f"Помечено как прочитано: {updated} уведомлений")
@@ -107,7 +107,7 @@ def init_notification_routes(app: Flask) -> None:
                     jsonify({"status": "error", "message": "Уведомление не найдено"}),
                     404,
                 )
-            notification.is_read = 1
+            notification.is_read = True
             db.session.commit()
             logger.info(f"Уведомление {notification_id} помечено как прочитанное")
             return jsonify(
@@ -136,7 +136,9 @@ def init_notification_routes(app: Flask) -> None:
             threshold = datetime.now(MOSCOW_TZ) - timedelta(days=30)
             deleted = (
                 db.session.query(Notification)
-                .filter(Notification.is_read == 1, Notification.created_at < threshold)
+                .filter(
+                    Notification.is_read is True, Notification.created_at < threshold
+                )
                 .delete()
             )
             db.session.commit()
