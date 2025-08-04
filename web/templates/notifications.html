@@ -36,22 +36,14 @@
                         </tr>
                     </thead>
                     <tbody id="notifications-table-body">
-                        {% for notification in notifications %}
+                        {% for notification in recent_notifications %}
                         <tr class="{{ 'table-info' if not notification.is_read else '' }}"
                             data-notification-id="{{ notification.id }}"
-                            {% if notification.user_id %}
-                                onclick="redirectToTarget({{ notification.id }}, '/user/{{ notification.user_id }}')"
-                                style="cursor: pointer;"
-                            {% elif notification.booking_id %}
-                                onclick="redirectToTarget({{ notification.id }}, '/booking/{{ notification.booking_id }}')"
-                                style="cursor: pointer;"
-                            {% elif notification.ticket_id %}
-                                onclick="redirectToTarget({{ notification.id }}, '/ticket/{{ notification.ticket_id }}')"
-                                style="cursor: pointer;"
-                            {% endif %}>
+                            onclick="redirectToTarget({{ notification.id }}, '{{ notification.target_url }}')"
+                            style="cursor: {{ 'pointer' if notification.target_url != '/notifications' else 'default' }};">
                             <td>{{ notification.id }}</td>
                             <td>{{ notification.message }}</td>
-                            <td>{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ notification.created_at }}</td>
                             <td>
                                 {% if notification.is_read %}
                                     <span class="badge bg-success">Прочитано</span>
@@ -91,13 +83,21 @@ function showAlert(type, message) {
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
     alertDiv.role = 'alert';
     alertDiv.innerHTML = `
-        ${message}
+        ${window.NotificationUtils.escapeHtml(message)}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     `;
-    document.body.prepend(alertDiv);
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
+    const main = document.querySelector('main');
+    if (main) {
+        main.prepend(alertDiv);
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => {
+                if (alertDiv.parentNode) alertDiv.remove();
+            }, 300);
+        }, 5000);
+    } else {
+        console.error('Не найден элемент main для alert');
+    }
 }
 
 /**
@@ -106,8 +106,6 @@ function showAlert(type, message) {
 function markAllNotificationsReadPage() {
     const button = event.target.closest('button');
     const originalText = button.innerHTML;
-
-    // Показываем загрузку
     button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Обработка...';
     button.disabled = true;
 
@@ -117,41 +115,31 @@ function markAllNotificationsReadPage() {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'success') {
-            // Обновляем все строки в таблице
             const rows = document.querySelectorAll('#notifications-table-body tr[data-notification-id]');
             rows.forEach(row => {
-                // Убираем подсветку непрочитанных
                 row.classList.remove('table-info');
-
-                // Обновляем статус
                 const statusCell = row.children[3];
                 statusCell.innerHTML = '<span class="badge bg-success">Прочитано</span>';
-
-                // Убираем кнопку "Прочитать"
                 const actionCell = row.children[4];
                 actionCell.innerHTML = '';
             });
-
-            // Показываем сообщение об успехе
-            showAlert('success', 'Все уведомления помечены как прочитанные');
-
-            // Обновляем счетчик в навбаре
-            if (typeof loadNotifications === 'function') {
-                loadNotifications();
-            }
+            window.NotificationUtils.showAlert('success', data.message);
+            window.NotificationUtils.loadNotifications();
         } else {
-            showAlert('danger', 'Произошла ошибка при обновлении уведомлений');
+            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при обновлении уведомлений');
         }
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        showAlert('danger', 'Произошла ошибка при обновлении уведомлений');
+        window.NotificationUtils.showAlert('danger', `Ошибка при обновлении уведомлений: ${error.message}`);
     })
     .finally(() => {
-        // Восстанавливаем кнопку
         button.innerHTML = originalText;
         button.disabled = false;
     });
@@ -165,8 +153,6 @@ function markSingleNotificationRead(notificationId) {
     const button = event.target.closest('button');
     const row = button.closest('tr');
     const originalText = button.innerHTML;
-
-    // Показываем загрузку
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     button.disabled = true;
 
@@ -176,34 +162,26 @@ function markSingleNotificationRead(notificationId) {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'success') {
-            // Обновляем строку
             row.classList.remove('table-info');
-
-            // Обновляем статус
             const statusCell = row.children[3];
             statusCell.innerHTML = '<span class="badge bg-success">Прочитано</span>';
-
-            // Убираем кнопку
             button.remove();
-
-            // Обновляем счетчик в навбаре
-            if (typeof loadNotifications === 'function') {
-                loadNotifications();
-            }
+            window.NotificationUtils.loadNotifications();
         } else {
-            showAlert('danger', 'Произошла ошибка при обновлении уведомления');
-            // Восстанавливаем кнопку
+            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при обновлении уведомления');
             button.innerHTML = originalText;
             button.disabled = false;
         }
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        showAlert('danger', 'Произошла ошибка при обновлении уведомления');
-        // Восстанавливаем кнопку
+        window.NotificationUtils.showAlert('danger', `Ошибка при обновлении уведомления: ${error.message}`);
         button.innerHTML = originalText;
         button.disabled = false;
     });
@@ -215,28 +193,33 @@ function markSingleNotificationRead(notificationId) {
  * @param {string} targetUrl - URL для перехода.
  */
 function redirectToTarget(notificationId, targetUrl) {
+    console.log(`Переход на ${targetUrl} для уведомления ${notificationId}`);
+    if (targetUrl === '/notifications' || targetUrl === '#') {
+        console.warn('Целевой URL не задан или некорректен, переход отменен');
+        window.NotificationUtils.showAlert('danger', 'Целевая страница не указана');
+        return;
+    }
+
     fetch(`/notifications/mark_read/${notificationId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'success') {
-            // Переходим на целевую страницу
             window.location.href = targetUrl;
-            // Обновляем счетчик в навбаре
-            if (typeof loadNotifications === 'function') {
-                loadNotifications();
-            }
         } else {
-            showAlert('danger', 'Произошла ошибка при обновлении уведомления');
+            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при обновлении уведомления');
         }
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        showAlert('danger', 'Произошла ошибка при переходе');
+        window.NotificationUtils.showAlert('danger', `Ошибка при переходе: ${error.message}`);
     });
 }
 
@@ -251,7 +234,6 @@ function clearAllNotifications() {
         return;
     }
 
-    // Показываем загрузку
     button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Обработка...';
     button.disabled = true;
 
@@ -261,42 +243,90 @@ function clearAllNotifications() {
             'Content-Type': 'application/json',
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'success') {
-            // Очищаем таблицу
             const tableBody = document.getElementById('notifications-table-body');
             tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет уведомлений</td></tr>';
-
-            // Показываем сообщение об успехе
-            showAlert('success', data.message);
-
-            // Обновляем счетчик в навбаре
-            if (typeof loadNotifications === 'function') {
-                loadNotifications();
-            }
+            window.NotificationUtils.showAlert('success', data.message);
+            window.NotificationUtils.loadNotifications();
         } else {
-            showAlert('danger', data.message);
+            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при очистке уведомлений');
         }
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        showAlert('danger', 'Произошла ошибка при очистке уведомлений');
+        window.NotificationUtils.showAlert('danger', `Ошибка при очистке уведомлений: ${error.message}`);
     })
     .finally(() => {
-        // Восстанавливаем кнопку
         button.innerHTML = originalText;
         button.disabled = false;
     });
 }
 
-// Привязываем событие клика к кнопке очистки уведомлений
+/**
+ * Динамически обновляет таблицу уведомлений.
+ */
+function updateNotificationsTable(notifications) {
+    const tableBody = document.getElementById('notifications-table-body');
+    tableBody.innerHTML = '';
+
+    if (notifications.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет уведомлений</td></tr>';
+        return;
+    }
+
+    notifications.forEach(notification => {
+        const row = document.createElement('tr');
+        row.className = notification.is_read ? '' : 'table-info';
+        row.dataset.notificationId = notification.id;
+
+        if (notification.target_url && notification.target_url !== '/notifications' && notification.target_url !== '#') {
+            row.style.cursor = 'pointer';
+            row.onclick = () => redirectToTarget(notification.id, notification.target_url);
+        }
+
+        row.innerHTML = `
+            <td>${notification.id}</td>
+            <td>${window.NotificationUtils.escapeHtml(notification.message)}</td>
+            <td>${notification.created_at}</td>
+            <td>
+                ${notification.is_read
+                    ? '<span class="badge bg-success">Прочитано</span>'
+                    : '<span class="badge bg-warning">Непрочитано</span>'}
+            </td>
+            <td>
+                ${!notification.is_read
+                    ? `<button type="button" class="btn btn-sm btn-outline-primary"
+                               onclick="markSingleNotificationRead(${notification.id}); event.stopPropagation();">
+                            <i class="fas fa-check"></i> Прочитать
+                       </button>`
+                    : ''}
+            </td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
     if (clearNotificationsBtn) {
         clearNotificationsBtn.addEventListener('click', clearAllNotifications);
     } else {
         console.error('Кнопка clearNotificationsBtn не найдена');
+    }
+
+    // Периодическая проверка новых уведомлений
+    if (window.NotificationUtils && window.NotificationUtils.loadNotifications) {
+        window.NotificationUtils.loadNotifications();
+        setInterval(() => {
+            window.NotificationUtils.loadNotifications();
+        }, 30000); // Проверка каждые 30 секунд
+    } else {
+        console.error('window.NotificationUtils.loadNotifications не определена');
     }
 });
 </script>
