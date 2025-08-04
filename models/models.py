@@ -492,6 +492,71 @@ def get_active_tariffs() -> List[Tariff]:
         session.close()
 
 
+def format_booking_notification(user, tariff, booking_data):
+    """Форматирует красивое уведомление о новой брони для админа"""
+
+    # Эмодзи для разных типов тарифов
+    tariff_emojis = {
+        "meeting": "🤝",
+        "workspace": "💼",
+        "event": "🎉",
+        "office": "🏢",
+        "coworking": "💻",
+    }
+
+    # Определяем эмодзи для тарифа
+    purpose = booking_data.get("tariff_purpose", "").lower()
+    tariff_emoji = tariff_emojis.get(purpose, "📋")
+
+    # Форматируем дату и время
+    visit_date = booking_data.get("visit_date")
+    visit_time = booking_data.get("visit_time")
+
+    if visit_time:
+        datetime_str = (
+            f"{visit_date.strftime('%d.%m.%Y')} в {visit_time.strftime('%H:%M')}"
+        )
+    else:
+        datetime_str = f"{visit_date.strftime('%d.%m.%Y')} (весь день)"
+
+    # Информация о скидке
+    discount_info = ""
+    if booking_data.get("discount", 0) > 0:
+        promocode_name = booking_data.get("promocode_name", "Неизвестный")
+        discount = booking_data.get("discount", 0)
+        discount_info = (
+            f"\n💰 <b>Скидка:</b> {discount}% (промокод: <code>{promocode_name}</code>)"
+        )
+
+    # Информация о продолжительности
+    duration_info = ""
+    if booking_data.get("duration"):
+        duration_info = f"\n⏱ <b>Длительность:</b> {booking_data['duration']} час(ов)"
+
+    # Основное сообщение
+    message = f"""🎯 <b>НОВАЯ БРОНЬ!</b> {tariff_emoji}
+
+👤 <b>Клиент:</b>
+├ <b>Имя:</b> {user.full_name or 'Не указано'}
+├ <b>Телефон:</b> {user.phone or 'Не указано'}
+├ <b>Email:</b> {user.email or 'Не указано'}
+└ <b>Telegram:</b> @{user.username or 'не указан'} (ID: <code>{user.telegram_id}</code>)
+
+📋 <b>Детали брони:</b>
+├ <b>Тариф:</b> {booking_data.get('tariff_name', 'Неизвестно')}
+├ <b>Дата и время:</b> {datetime_str}{duration_info}
+└ <b>Сумма:</b> {booking_data.get('amount', 0):.2f} ₽{discount_info}
+
+🔗 <b>Rubitime ID:</b> <code>{booking_data.get('rubitime_id', 'Не создано')}</code>
+
+📊 <b>Статистика клиента:</b>
+└ <b>Успешных броней:</b> {user.successful_bookings}
+
+⏰ <i>Время создания: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    return message.strip()
+
+
 def create_booking(
     telegram_id: int,
     tariff_id: int,
@@ -503,8 +568,25 @@ def create_booking(
     paid: Optional[bool] = False,
     confirmed: Optional[bool] = False,
     payment_id: Optional[str] = None,
-) -> Tuple[Optional[Booking], Optional[str], Optional[SQLAlchemySession]]:
-    """Создаёт запись бронирования и уведомление в базе данных."""
+) -> Tuple[Optional[Booking], Optional[str], Optional[Session]]:
+    """
+    Создаёт запись бронирования и уведомление в базе данных.
+
+    Args:
+        telegram_id: Telegram ID пользователя.
+        tariff_id: ID тарифа.
+        visit_date: Дата визита.
+        visit_time: Время визита (для "Переговорной").
+        duration: Продолжительность (для "Переговорной").
+        promocode_id: ID промокода, если применён.
+        amount: Итоговая сумма.
+        paid: Флаг оплаты.
+        confirmed: Флаг подтверждения.
+        payment_id: ID платежа (для платных броней).
+
+    Returns:
+        Tuple[Optional[Booking], Optional[str], Optional[Session]]: Объект брони, сообщение для админа, сессия.
+    """
     session = Session()
     retries = 3
     try:
@@ -513,11 +595,13 @@ def create_booking(
             logger.warning(f"Пользователь с telegram_id {telegram_id} не найден")
             session.close()
             return None, "Пользователь не найден", None
+
         tariff = session.query(Tariff).filter_by(id=tariff_id, is_active=True).first()
         if not tariff:
             logger.warning(f"Тариф с ID {tariff_id} не найден или не активен")
             session.close()
             return None, "Тариф не найден", None
+
         for attempt in range(retries):
             try:
                 booking = Booking(
@@ -534,6 +618,27 @@ def create_booking(
                 )
                 session.add(booking)
                 session.flush()
+
+                # Формируем данные для уведомления
+                booking_data = {
+                    "tariff_name": tariff.name,
+                    "tariff_purpose": tariff.purpose.lower(),
+                    "visit_date": visit_date,
+                    "visit_time": visit_time,
+                    "duration": duration,
+                    "amount": amount or tariff.price,
+                    "discount": 0,
+                    "promocode_name": None,
+                    "rubitime_id": getattr(booking, "rubitime_id", "Не создано"),
+                }
+                if promocode_id:
+                    promocode = (
+                        session.query(Promocode).filter_by(id=promocode_id).first()
+                    )
+                    if promocode:
+                        booking_data["discount"] = promocode.discount
+                        booking_data["promocode_name"] = promocode.name
+
                 notification = Notification(
                     user_id=user.id,
                     message=f"Новая бронь от {user.full_name or 'пользователя'}: тариф {tariff.name}, дата {visit_date}"
@@ -548,17 +653,8 @@ def create_booking(
                 )
                 session.add(notification)
                 session.commit()
-                admin_message = (
-                    f"Новая бронь!\n"
-                    f"Пользователь: {user.full_name or 'Не указано'} (ID: {telegram_id})\n"
-                    f"Тариф: {tariff.name} ({tariff.price} ₽)\n"
-                    f"Дата: {visit_date}"
-                    + (
-                        f"\nВремя: {visit_time}\nПродолжительность: {duration} ч"
-                        if tariff.purpose == "Переговорная"
-                        else ""
-                    )
-                )
+
+                admin_message = format_booking_notification(user, tariff, booking_data)
                 logger.info(
                     f"Бронь создана: пользователь {telegram_id}, тариф {tariff.name}, дата {visit_date}, ID брони {booking.id}"
                 )
@@ -582,7 +678,7 @@ def create_booking(
         session.rollback()
         logger.error(f"Ошибка создания брони для пользователя {telegram_id}: {str(e)}")
         session.close()
-        return None, "Ошибка при создании брони", None
+        return None, "Ошибка при создания брони", None
 
 
 def get_promocode_by_name(promocode_name: str) -> Optional[Promocode]:

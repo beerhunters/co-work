@@ -195,32 +195,6 @@ async def process_add_photo(callback_query: CallbackQuery, state: FSMContext) ->
     await callback_query.answer()
 
 
-# @router.callback_query(TicketForm.ASK_PHOTO, F.data == "no_photo")
-# async def process_no_photo(
-#     callback_query: CallbackQuery, state: FSMContext, bot: Bot
-# ) -> None:
-#     """
-#     Обработка отказа от добавления фото. Создаёт заявку.
-#
-#     Args:
-#         callback_query: Callback-запрос.
-#         state: Контекст состояния FSM.
-#         bot: Экземпляр бота.
-#     """
-#     data = await state.get_data()
-#     telegram_id = data.get("telegram_id")
-#     if not telegram_id:
-#         logger.error("Не удалось получить telegram_id из состояния FSM")
-#         await callback_query.message.edit_text(
-#             text="Ошибка: не удалось определить пользователя. Попробуйте снова.",
-#             reply_markup=create_user_keyboard(),
-#         )
-#         await state.clear()
-#         await callback_query.answer()
-#         return
-#
-#     await save_ticket(callback_query.message, state, bot, telegram_id, photo_id=None)
-#     await callback_query.answer()
 @router.callback_query(TicketForm.ASK_PHOTO, F.data == "no_photo")
 async def process_skip_photo(callback_query: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
@@ -258,33 +232,10 @@ async def process_skip_photo(callback_query: CallbackQuery, state: FSMContext) -
             "❌ Произошла ошибка при отправке заявки. Попробуйте еще раз.",
             reply_markup=create_user_keyboard(),
         )
-
+    await callback_query.answer()
     await state.clear()
 
 
-# @router.message(TicketForm.PHOTO, F.content_type == "photo")
-# async def process_photo(message: Message, state: FSMContext, bot: Bot) -> None:
-#     """
-#     Обработка отправленного фото. Создаёт заявку с фото.
-#
-#     Args:
-#         message: Входящее сообщение с фото.
-#         state: Контекст состояния FSM.
-#         bot: Экземпляр бота.
-#     """
-#     data = await state.get_data()
-#     telegram_id = data.get("telegram_id")
-#     if not telegram_id:
-#         logger.error("Не удалось получить telegram_id из состояния FSM")
-#         await message.answer(
-#             text="Ошибка: не удалось определить пользователя. Попробуйте снова.",
-#             reply_markup=create_user_keyboard(),
-#         )
-#         await state.clear()
-#         return
-#
-#     photo_id = message.photo[-1].file_id
-#     await save_ticket(message, state, bot, telegram_id, photo_id)
 @router.message(TicketForm.PHOTO, F.content_type == "photo")
 async def process_photo(message: Message, state: FSMContext, bot: Bot) -> None:
     photo_id = message.photo[-1].file_id
@@ -332,87 +283,7 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot) -> None:
             "❌ Произошла ошибка при отправке заявки. Попробуйте еще раз.",
             reply_markup=create_user_keyboard(),
         )
-
     await state.clear()
-
-
-# async def save_ticket(
-#     message: Message,
-#     state: FSMContext,
-#     bot: Bot,
-#     telegram_id: int,
-#     photo_id: Optional[str],
-# ) -> None:
-#     """
-#     Сохраняет заявку в БД и отправляет уведомления.
-#
-#     Args:
-#         message: Входящее сообщение.
-#         state: Контекст состояния FSM.
-#         bot: Экземпляр бота.
-#         telegram_id: Telegram ID пользователя.
-#         photo_id: ID фото в Telegram (если есть).
-#     """
-#     data = await state.get_data()
-#     description = data.get("description")
-#     try:
-#         ticket, admin_message, session = create_ticket(
-#             telegram_id=telegram_id,
-#             description=description,
-#             photo_id=photo_id,
-#         )
-#         if not ticket:
-#             await message.answer(
-#                 admin_message or "Ошибка при создании заявки.",
-#                 reply_markup=create_user_keyboard(),
-#             )
-#             logger.warning(f"Не удалось создать заявку для пользователя {telegram_id}")
-#             await state.clear()
-#             return
-#
-#         try:
-#             if photo_id:
-#                 await bot.send_photo(
-#                     chat_id=ADMIN_TELEGRAM_ID,
-#                     photo=photo_id,
-#                     caption=admin_message,
-#                 )
-#             else:
-#                 await bot.send_message(
-#                     chat_id=ADMIN_TELEGRAM_ID,
-#                     text=admin_message,
-#                 )
-#
-#             await message.answer(
-#                 f"Заявка #{ticket.id} создана!",
-#                 reply_markup=create_user_keyboard(),
-#             )
-#             logger.info(
-#                 f"Заявка #{ticket.id} создана для пользователя {telegram_id}, "
-#                 f"photo_id={photo_id or 'без фото'}"
-#             )
-#         except Exception as e:
-#             logger.error(
-#                 f"Ошибка при отправке уведомления для заявки #{ticket.id}: {str(e)}"
-#             )
-#             session.rollback()
-#             await message.answer(
-#                 "Заявка создана, но возникла ошибка при отправке уведомления.",
-#                 reply_markup=create_user_keyboard(),
-#             )
-#         finally:
-#             if session:
-#                 session.close()
-#     except Exception as e:
-#         logger.error(
-#             f"Ошибка при создании заявки для пользователя {telegram_id}: {str(e)}"
-#         )
-#         await message.answer(
-#             "Ошибка при создании заявки. Попробуйте позже.",
-#             reply_markup=create_user_keyboard(),
-#         )
-#     finally:
-#         await state.clear()
 
 
 def register_ticket_handlers(dp: Dispatcher) -> None:

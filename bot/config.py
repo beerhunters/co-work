@@ -27,8 +27,6 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 RULES = "https://parta-works.ru/main_rules"
 
 # btn_back = ⬅️ Назад
-# print_button = 🖨️ Печать(pdf, doc, docx)
-# quiz_button = 🧠 Квиз
 # rules_button = 📄 Общие правила
 # contact_admin_button = 📞 Связаться с Администратором
 

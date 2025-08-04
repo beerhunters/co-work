@@ -32,6 +32,8 @@ from models.models import (
     get_user_by_telegram_id,
     get_promocode_by_name,
     Promocode,
+    format_booking_notification,
+    Tariff,
 )
 from utils.logger import setup_logger
 
@@ -53,6 +55,41 @@ class Booking(StatesGroup):
     ENTER_PROMOCODE = State()
     PAYMENT = State()
     STATUS_PAYMENT = State()
+
+
+def format_payment_notification(user, booking_data, status="SUCCESS"):
+    """Форматирует красивое уведомление об оплате для админа"""
+
+    status_emojis = {
+        "SUCCESS": "✅",
+        "FAILED": "❌",
+        "PENDING": "⏳",
+        "CANCELLED": "🚫",
+    }
+
+    status_emoji = status_emojis.get(status, "❓")
+    status_texts = {
+        "SUCCESS": "УСПЕШНО ОПЛАЧЕНО",
+        "FAILED": "ОШИБКА ОПЛАТЫ",
+        "PENDING": "ОЖИДАЕТ ОПЛАТЫ",
+        "CANCELLED": "ОПЛАТА ОТМЕНЕНА",
+    }
+    status_text = status_texts.get(status, "НЕИЗВЕСТНЫЙ СТАТУС")
+
+    message = f"""💳 <b>{status_text}</b> {status_emoji}
+
+👤 <b>Клиент:</b> {user.full_name or 'Не указано'}
+📞 <b>Телефон:</b> {user.phone or 'Не указано'}
+
+💰 <b>Детали платежа:</b>
+├ <b>Сумма:</b> {booking_data.get('amount', 0):.2f} ₽
+├ <b>Тариф:</b> {booking_data.get('tariff_name', 'Неизвестно')}
+├ <b>Дата брони:</b> {booking_data.get('visit_date', '').strftime('%d.%m.%Y') if booking_data.get('visit_date') else 'Неизвестно'}
+└ <b>Payment ID:</b> <code>{booking_data.get('payment_id', 'Неизвестно')}</code>
+
+⏰ <i>Время: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    return message.strip()
 
 
 def create_tariff_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
@@ -239,7 +276,7 @@ async def process_tariff_selection(
     await state.update_data(
         tariff_id=tariff.id,
         tariff_name=tariff.name,
-        tariff_purpose=tariff.purpose,
+        tariff_purpose=tariff.purpose.lower(),  # Приводим к нижнему регистру
         tariff_service_id=tariff.service_id,
         tariff_price=tariff.price,
     )
@@ -289,7 +326,7 @@ async def process_date(message: Message, state: FSMContext) -> None:
     tariff_purpose = data["tariff_purpose"]
     tariff_name = data["tariff_name"]
     await state.update_data(visit_date=visit_date)
-    if tariff_purpose == "Переговорная":
+    if tariff_purpose == "переговорная":
         await state.set_state(Booking.ENTER_TIME)
         await message.answer(
             "Введите время визита (чч:мм, например, 14:30):",
@@ -446,7 +483,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         logger.info(f"Пользователь {message.from_user.id} пропустил промокод")
 
     duration = data.get("duration")
-    if tariff_purpose == "Переговорная" and duration:
+    if tariff_purpose == "переговорная" and duration:
         amount = tariff_price * duration
         if duration > 3:
             additional_discount = 10
@@ -471,7 +508,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         )
 
     description = f"Бронь: {tariff_name}, дата: {data['visit_date']}"
-    if tariff_purpose == "Переговорная":
+    if tariff_purpose == "переговорная":
         description += f", время: {data.get('visit_time')}, длительность: {duration} ч, сумма: {amount:.2f} ₽"
     else:
         description += f", сумма: {amount:.2f} ₽"
@@ -485,7 +522,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
         discount=discount,
     )
 
-    if tariff_purpose == "Переговорная":
+    if tariff_purpose == "переговорная":
         await handle_free_booking(message, state, bot=message.bot, paid=False)
     elif amount == 0:
         await handle_free_booking(message, state, bot=message.bot, paid=True)
@@ -573,7 +610,7 @@ async def handle_free_booking(
         promocode_id=promocode_id,
         amount=amount,
         paid=paid,
-        confirmed=(False if tariff_purpose == "Переговорная" else True),
+        confirmed=(False if tariff_purpose == "переговорная" else True),
     )
     if not booking:
         if session:
@@ -603,7 +640,7 @@ async def handle_free_booking(
                 )
 
         # Увеличиваем счетчик успешных бронирований для тарифов "Опенспейс" при успешной брони
-        if tariff_purpose == "Опенспейс" and booking.confirmed:
+        if tariff_purpose == "опенспейс" and booking.confirmed:
             user.successful_bookings += 1
             logger.info(
                 f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} "
@@ -613,7 +650,7 @@ async def handle_free_booking(
         session.commit()
 
         # Формируем дату и время для Rubitime
-        if tariff_purpose == "Переговорная" and visit_time and duration:
+        if tariff_purpose == "переговорная" and visit_time and duration:
             rubitime_date = datetime.combine(visit_date, visit_time).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
@@ -646,7 +683,22 @@ async def handle_free_booking(
                 f"duration={rubitime_duration}, price={amount}"
             )
 
-        await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+            # Обновляем admin_message с актуальным rubitime_id
+            updated_booking_data = {
+                **data,
+                "rubitime_id": rubitime_id,
+            }
+            admin_message = format_booking_notification(
+                user,
+                session.query(Tariff).filter_by(id=tariff_id).first(),
+                updated_booking_data,
+            )
+
+        await bot.send_message(
+            ADMIN_TELEGRAM_ID,
+            admin_message,
+            parse_mode="HTML",
+        )
         response_text = (
             f"Бронь создана!\n" f"Тариф: {tariff_name}\n" f"Дата: {visit_date}\n"
         )
@@ -657,7 +709,7 @@ async def handle_free_booking(
         response_text += f"Сумма: {amount:.2f} ₽\n"
         response_text += (
             "Ожидайте подтверждения."
-            if tariff_purpose == "Переговорная"
+            if tariff_purpose == "переговорная"
             else "Бронь подтверждена."
         )
         await message.answer(
@@ -759,7 +811,7 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                         )
 
                 # Увеличиваем счетчик успешных бронирований для тарифов "Опенспейс" при успешной брони
-                if tariff_purpose == "Опенспейс" and booking.confirmed:
+                if tariff_purpose == "опенспейс" and booking.confirmed:
                     user.successful_bookings += 1
                     logger.info(
                         f"Увеличен счетчик successful_bookings для пользователя {user.telegram_id} "
@@ -769,7 +821,7 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 session.commit()
 
                 # Формируем дату и время для Rubitime
-                if tariff_purpose == "Переговорная" and visit_time and duration:
+                if tariff_purpose == "переговорная" and visit_time and duration:
                     rubitime_date = datetime.combine(visit_date, visit_time).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
@@ -802,7 +854,31 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                         f"duration={rubitime_duration}, price={amount}"
                     )
 
-                await bot.send_message(ADMIN_TELEGRAM_ID, admin_message)
+                    # Обновляем admin_message с актуальным rubitime_id
+                    updated_booking_data = {
+                        **data,
+                        "rubitime_id": rubitime_id,
+                    }
+                    admin_message = format_booking_notification(
+                        user,
+                        session.query(Tariff).filter_by(id=tariff_id).first(),
+                        updated_booking_data,
+                    )
+
+                # Отправляем уведомление об успешной оплате
+                payment_notification = format_payment_notification(
+                    user, data, status="SUCCESS"
+                )
+                await bot.send_message(
+                    ADMIN_TELEGRAM_ID,
+                    payment_notification,
+                    parse_mode="HTML",
+                )
+                await bot.send_message(
+                    ADMIN_TELEGRAM_ID,
+                    admin_message,
+                    parse_mode="HTML",
+                )
                 response_text = (
                     f"Бронь создана!\n"
                     f"Тариф: {tariff_name}\n"
@@ -817,7 +893,7 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 response_text += f"Сумма: {amount:.2f} ₽\n"
                 response_text += (
                     "Ожидайте подтверждения."
-                    if tariff_purpose == "Переговорная"
+                    if tariff_purpose == "переговорная"
                     else "Бронь подтверждена."
                 )
                 await bot.edit_message_text(
@@ -833,6 +909,15 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
             except Exception as e:
                 logger.error(f"Ошибка после успешной оплаты: {str(e)}")
                 session.rollback()
+                # Отправляем уведомление об ошибке
+                payment_notification = format_payment_notification(
+                    user, data, status="FAILED"
+                )
+                await bot.send_message(
+                    ADMIN_TELEGRAM_ID,
+                    payment_notification,
+                    parse_mode="HTML",
+                )
                 await bot.edit_message_text(
                     text="Ошибка при создании брони. Попробуйте позже.",
                     chat_id=message.chat.id,
@@ -845,6 +930,14 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                 await state.clear()
             return
         elif status == "canceled":
+            payment_notification = format_payment_notification(
+                user, data, status="CANCELLED"
+            )
+            await bot.send_message(
+                ADMIN_TELEGRAM_ID,
+                payment_notification,
+                parse_mode="HTML",
+            )
             await bot.edit_message_text(
                 text="Платёж отменён.",
                 chat_id=message.chat.id,
@@ -855,6 +948,12 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
             return
         await asyncio.sleep(delay)
 
+    payment_notification = format_payment_notification(user, data, status="FAILED")
+    await bot.send_message(
+        ADMIN_TELEGRAM_ID,
+        payment_notification,
+        parse_mode="HTML",
+    )
     await bot.edit_message_text(
         text="Время оплаты истекло. Попробуйте снова.",
         chat_id=message.chat.id,
@@ -878,6 +977,8 @@ async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> No
     payment_id = data.get("payment_id")
     payment_message_id = data.get("payment_message_id")
     payment_task = data.get("payment_task")
+
+    user = get_user_by_telegram_id(callback_query.from_user.id)
 
     if payment_task and not payment_task.done():
         payment_task.cancel()
@@ -911,6 +1012,12 @@ async def cancel_payment(callback_query: CallbackQuery, state: FSMContext) -> No
             logger.warning(f"Не удалось обработать платёж {payment_id}: {str(e)}")
             logger.info(f"Завершаем отмену без дополнительного обращения к YooKassa")
 
+    payment_notification = format_payment_notification(user, data, status="CANCELLED")
+    await callback_query.message.bot.send_message(
+        ADMIN_TELEGRAM_ID,
+        payment_notification,
+        parse_mode="HTML",
+    )
     await callback_query.message.edit_text(
         text="Платёж отменён.",
         reply_markup=create_user_keyboard(),
