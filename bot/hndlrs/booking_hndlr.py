@@ -58,8 +58,16 @@ class Booking(StatesGroup):
 
 
 def format_payment_notification(user, booking_data, status="SUCCESS"):
-    """Форматирует красивое уведомление об оплате для админа"""
+    """Форматирует красивое уведомление об оплате для админа.
 
+    Args:
+        user: Объект пользователя.
+        booking_data: Данные бронирования (словарь с tariff_name, visit_date, amount, payment_id).
+        status: Статус платежа ("SUCCESS", "FAILED", "PENDING", "CANCELLED").
+
+    Returns:
+        str: Отформатированное сообщение.
+    """
     status_emojis = {
         "SUCCESS": "✅",
         "FAILED": "❌",
@@ -88,6 +96,68 @@ def format_payment_notification(user, booking_data, status="SUCCESS"):
 └ <b>Payment ID:</b> <code>{booking_data.get('payment_id', 'Неизвестно')}</code>
 
 ⏰ <i>Время: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    return message.strip()
+
+
+def format_user_booking_notification(user, booking_data, confirmed: bool) -> str:
+    """Форматирует красивое уведомление о бронировании для пользователя.
+
+    Args:
+        user: Объект пользователя.
+        booking_data: Данные бронирования (словарь с tariff_name, tariff_purpose, visit_date, visit_time, duration, amount, discount, promocode_name).
+        confirmed: Флаг подтверждения брони (True для "Опенспейс", False для "Переговорной").
+
+    Returns:
+        str: Отформатированное сообщение.
+    """
+    tariff_emojis = {
+        "meeting": "🤝",
+        "workspace": "💼",
+        "event": "🎉",
+        "office": "🏢",
+        "coworking": "💻",
+    }
+
+    purpose = booking_data.get("tariff_purpose", "").lower()
+    tariff_emoji = tariff_emojis.get(purpose, "📋")
+    visit_date = booking_data.get("visit_date")
+    visit_time = booking_data.get("visit_time")
+
+    if visit_time:
+        datetime_str = (
+            f"{visit_date.strftime('%d.%m.%Y')} в {visit_time.strftime('%H:%M')}"
+        )
+    else:
+        datetime_str = f"{visit_date.strftime('%d.%m.%Y')} (весь день)"
+
+    discount_info = ""
+    if booking_data.get("discount", 0) > 0:
+        promocode_name = booking_data.get("promocode_name", "Неизвестный")
+        discount = booking_data.get("discount", 0)
+        discount_info = (
+            f"\n💰 <b>Скидка:</b> {discount}% (промокод: <code>{promocode_name}</code>)"
+        )
+
+    duration_info = ""
+    if booking_data.get("duration"):
+        duration_info = f"\n⏱ <b>Длительность:</b> {booking_data['duration']} час(ов)"
+
+    status_text = "Бронь подтверждена ✅" if confirmed else "Ожидайте подтверждения ⏳"
+    status_instruction = (
+        "" if confirmed else "\n📩 Мы свяжемся с вами для подтверждения брони."
+    )
+
+    message = f"""🎉 <b>Ваша бронь создана!</b> {tariff_emoji}
+
+📋 <b>Детали брони:</b>
+├ <b>Тариф:</b> {booking_data.get('tariff_name', 'Неизвестно')}
+├ <b>Дата и время:</b> {datetime_str}{duration_info}
+└ <b>Сумма:</b> {booking_data.get('amount', 0):.2f} ₽{discount_info}
+
+📌 <b>Статус:</b> {status_text}{status_instruction}
+
+⏰ <i>Время создания: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
 
     return message.strip()
 
@@ -699,21 +769,16 @@ async def handle_free_booking(
             admin_message,
             parse_mode="HTML",
         )
-        response_text = (
-            f"Бронь создана!\n" f"Тариф: {tariff_name}\n" f"Дата: {visit_date}\n"
-        )
-        if duration:
-            response_text += f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
-        if promocode_name and promocode_name != "-":
-            response_text += f"Промокод: {promocode_name} (-{discount}%)\n"
-        response_text += f"Сумма: {amount:.2f} ₽\n"
-        response_text += (
-            "Ожидайте подтверждения."
-            if tariff_purpose == "переговорная"
-            else "Бронь подтверждена."
+
+        # Формируем сообщение для пользователя
+        response_text = format_user_booking_notification(
+            user,
+            {**data, "rubitime_id": rubitime_id or "Не создано"},
+            confirmed=(tariff_purpose != "переговорная"),
         )
         await message.answer(
             response_text,
+            parse_mode="HTML",
             reply_markup=create_user_keyboard(),
         )
         logger.info(
@@ -879,27 +944,18 @@ async def poll_payment_status(message: Message, state: FSMContext, bot: Bot) -> 
                     admin_message,
                     parse_mode="HTML",
                 )
-                response_text = (
-                    f"Бронь создана!\n"
-                    f"Тариф: {tariff_name}\n"
-                    f"Дата: {visit_date}\n"
-                )
-                if duration:
-                    response_text += (
-                        f"Время: {visit_time}\nПродолжительность: {duration} ч\n"
-                    )
-                if promocode_name and promocode_name != "-":
-                    response_text += f"Промокод: {promocode_name} (-{discount}%)\n"
-                response_text += f"Сумма: {amount:.2f} ₽\n"
-                response_text += (
-                    "Ожидайте подтверждения."
-                    if tariff_purpose == "переговорная"
-                    else "Бронь подтверждена."
+
+                # Формируем сообщение для пользователя
+                response_text = format_user_booking_notification(
+                    user,
+                    {**data, "rubitime_id": rubitime_id or "Не создано"},
+                    confirmed=(tariff_purpose != "переговорная"),
                 )
                 await bot.edit_message_text(
                     text=response_text,
                     chat_id=message.chat.id,
                     message_id=payment_message_id,
+                    parse_mode="HTML",
                     reply_markup=create_user_keyboard(),
                 )
                 logger.info(
