@@ -255,6 +255,54 @@ def create_payment_keyboard(
     return keyboard
 
 
+@router.callback_query(
+    F.data == "cancel",
+    Booking.SELECT_TARIFF,
+    # or Booking.ENTER_DATE
+    # or Booking.ENTER_TIME
+    # or Booking.ENTER_DURATION
+    # or Booking.ENTER_PROMOCODE,
+)
+async def cancel_booking(callback_query: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработка нажатия кнопки 'Главное меню' в состояниях бронирования.
+
+    Args:
+        callback_query: Callback-запрос.
+        state: Контекст состояния FSM.
+    """
+    await state.clear()
+    await callback_query.message.edit_text(
+        text="Бронирование отменено.", reply_markup=create_user_keyboard()
+    )
+    logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
+    await callback_query.answer()
+
+
+@router.callback_query(
+    F.data == "cancel",
+    # Booking.SELECT_TARIFF
+    Booking.ENTER_DATE,
+    # or Booking.ENTER_TIME
+    # or Booking.ENTER_DURATION
+    # or Booking.ENTER_PROMOCODE,
+)
+async def cancel_booking(callback_query: CallbackQuery, state: FSMContext) -> None:
+    """
+    Обработка нажатия кнопки 'Главное меню' в состояниях бронирования.
+
+    Args:
+        callback_query: Callback-запрос.
+        state: Контекст состояния FSM.
+    """
+    await state.clear()
+    await callback_query.message.edit_text(
+        text="Бронирование отменено.", reply_markup=create_user_keyboard()
+    )
+    logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
+    await callback_query.answer()
+
+
 @router.callback_query(F.data == "booking")
 async def start_booking(
     callback_query: CallbackQuery, state: FSMContext, bot: Bot
@@ -303,46 +351,23 @@ async def start_booking(
     await callback_query.answer()
 
 
-@router.callback_query(Booking.SELECT_TARIFF, F.data == "cancel")
-async def cancel_tariff_selection(
-    callback_query: CallbackQuery, state: FSMContext
-) -> None:
-    """
-    Обработка нажатия кнопки 'Отмена' в состоянии выбора тарифа.
-
-    Args:
-        callback_query: Callback-запрос.
-        state: Контекст состояния FSM.
-    """
-    await state.clear()
-    await callback_query.message.edit_text(
-        text="Бронирование отменено.", reply_markup=create_user_keyboard()
-    )
-    logger.info(f"Пользователь {callback_query.from_user.id} отменил выбор тарифа")
-    await callback_query.answer()
-
-
-@router.callback_query(
-    F.data == "main_menu",
-    Booking.ENTER_DATE
-    or Booking.ENTER_TIME
-    or Booking.ENTER_DURATION
-    or Booking.ENTER_PROMOCODE,
-)
-async def cancel_booking(callback_query: CallbackQuery, state: FSMContext) -> None:
-    """
-    Обработка нажатия кнопки 'Главное меню' в состояниях бронирования.
-
-    Args:
-        callback_query: Callback-запрос.
-        state: Контекст состояния FSM.
-    """
-    await state.clear()
-    await callback_query.message.edit_text(
-        text="Бронирование отменено.", reply_markup=create_user_keyboard()
-    )
-    logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
-    await callback_query.answer()
+# @router.callback_query(Booking.SELECT_TARIFF or Booking.ENTER_DATE, F.data == "cancel")
+# async def cancel_tariff_selection(
+#     callback_query: CallbackQuery, state: FSMContext
+# ) -> None:
+#     """
+#     Обработка нажатия кнопки 'Отмена' в состоянии выбора тарифа.
+#
+#     Args:
+#         callback_query: Callback-запрос.
+#         state: Контекст состояния FSM.
+#     """
+#     await state.clear()
+#     await callback_query.message.edit_text(
+#         text="Бронирование отменено.", reply_markup=create_user_keyboard()
+#     )
+#     logger.info(f"Пользователь {callback_query.from_user.id} отменил выбор тарифа")
+#     await callback_query.answer()
 
 
 @router.callback_query(Booking.SELECT_TARIFF, F.data.startswith("tariff_"))
@@ -447,6 +472,25 @@ async def process_date_selection(
             f"Ошибка при обработке даты для пользователя {callback_query.from_user.id}: {str(e)}"
         )
         await callback_query.answer()
+
+
+# @router.callback_query(Booking.ENTER_DATE, F.data == "cancel")
+# async def cancel_tariff_selection(
+#     callback_query: CallbackQuery, state: FSMContext
+# ) -> None:
+#     """
+#     Обработка нажатия кнопки 'Отмена' в состоянии выбора тарифа.
+#
+#     Args:
+#         callback_query: Callback-запрос.
+#         state: Контекст состояния FSM.
+#     """
+#     await state.clear()
+#     await callback_query.message.edit_text(
+#         text="Бронирование отменено.", reply_markup=create_user_keyboard()
+#     )
+#     logger.info(f"Пользователь {callback_query.from_user.id} отменил выбор тарифа")
+#     await callback_query.answer()
 
 
 @router.message(Booking.ENTER_DATE)
