@@ -5,10 +5,13 @@ from flask_login import login_user, logout_user, login_required
 from werkzeug.security import check_password_hash
 
 from models.models import Admin
-from utils.logger import setup_logger
+
 from web.app import db
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_auth_routes(app: Flask) -> None:

@@ -5,9 +5,10 @@ from typing import Any
 from models.models import Tariff
 from web.routes.utils import get_unread_notifications_count, get_recent_notifications
 from web.app import db
-from utils.logger import setup_logger
+from utils.logger import get_logger
 
-logger = setup_logger(__name__)
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_tariff_routes(app: Flask) -> None:

@@ -14,9 +14,12 @@ from aiogram.types import (
 
 from bot.config import create_user_keyboard, create_back_keyboard
 from models.models import create_ticket
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
+
 router = Router()
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 

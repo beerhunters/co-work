@@ -13,7 +13,7 @@ from flask import (
 from flask_login import login_required
 
 from models.models import User, update_invited_count
-from utils.logger import setup_logger
+
 from web.app import db, AVATAR_FOLDER, MAX_AVATAR_SIZE
 from web.routes.utils import (
     check_file_exists,
@@ -23,7 +23,10 @@ from web.routes.utils import (
     get_unread_notifications_count,
 )
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_user_routes(app: Flask) -> None:

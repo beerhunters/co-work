@@ -10,9 +10,11 @@ from web.routes.utils import (
     send_telegram_message_sync,
 )
 from web.app import db
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_booking_routes(app: Flask) -> None:

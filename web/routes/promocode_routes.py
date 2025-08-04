@@ -6,9 +6,11 @@ from typing import Any
 from models.models import Promocode
 from web.routes.utils import get_unread_notifications_count, get_recent_notifications
 from web.app import db
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_promocode_routes(app: Flask) -> None:

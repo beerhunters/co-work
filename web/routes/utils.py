@@ -9,10 +9,14 @@ from sqlalchemy import desc
 
 from models.models import Notification
 from utils.bot_instance import get_bot
-from utils.logger import setup_logger
+
 from web.app import db
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
+
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "mp4", "mov"}
 ALLOWED_AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}

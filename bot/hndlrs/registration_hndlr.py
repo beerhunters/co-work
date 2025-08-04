@@ -17,7 +17,11 @@ from dotenv import load_dotenv
 
 from bot.config import create_user_keyboard, create_back_keyboard, RULES
 from models.models import add_user, check_and_add_user, get_user_by_telegram_id
-from utils.logger import setup_logger
+
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def format_registration_notification(user, referrer_info=None):
@@ -42,8 +46,6 @@ def format_registration_notification(user, referrer_info=None):
 
     return message.strip()
 
-
-logger = setup_logger(__name__)
 
 load_dotenv()
 
@@ -140,7 +142,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id
     text_parts = message.text.split(maxsplit=1)
     logger.info(f"/start от {user_id}, текст: {message.text}")
-
+    1 / 0
     await state.clear()
 
     if not message.from_user:

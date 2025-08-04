@@ -9,9 +9,11 @@ import pytz
 from dotenv import load_dotenv
 from yookassa import Payment, Configuration
 
-from utils.logger import setup_logger
+from utils.logger import get_logger
 
-logger = setup_logger(__name__)
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
+
 load_dotenv()
 
 # Конфигурация YooKassa

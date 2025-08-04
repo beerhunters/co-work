@@ -35,9 +35,11 @@ from models.models import (
     format_booking_notification,
     Tariff,
 )
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+
 load_dotenv()
 
 router = Router()

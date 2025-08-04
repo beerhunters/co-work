@@ -23,9 +23,11 @@ from datetime import datetime
 import pytz
 import enum
 from werkzeug.security import generate_password_hash, check_password_hash
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 Base = declarative_base()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")

@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 from models.models import User, Newsletter, Session
 from utils.bot_instance import get_bot
-from utils.logger import setup_logger
+
 from web.app import db, UPLOAD_FOLDER, MAX_FILE_SIZE
 from web.routes.utils import (
     clean_html,
@@ -21,8 +21,10 @@ from web.routes.utils import (
     get_recent_notifications,
     get_unread_notifications_count,
 )
+from utils.logger import get_logger
 
-logger = setup_logger(__name__)
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_newsletter_routes(app: Flask) -> None:

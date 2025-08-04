@@ -1,12 +1,14 @@
 import os
 from typing import Optional
 from aiogram import Bot
-from utils.logger import setup_logger
 from dotenv import load_dotenv
+from utils.logger import get_logger
 
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 load_dotenv()
-logger = setup_logger(__name__)
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 _bot: Optional[Bot] = None

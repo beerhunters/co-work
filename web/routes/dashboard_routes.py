@@ -3,9 +3,11 @@ from flask_login import login_required
 from typing import Any
 
 from web.routes.utils import get_unread_notifications_count, get_recent_notifications
-from utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+from utils.logger import get_logger
+
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 
 def init_dashboard_routes(app: Flask) -> None:

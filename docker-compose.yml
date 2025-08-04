@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile.bot
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL}
       - ADMIN_TELEGRAM_ID=${ADMIN_TELEGRAM_ID}
       - YOKASSA_ACCOUNT_ID=${YOKASSA_ACCOUNT_ID}
       - YOKASSA_SECRET_KEY=${YOKASSA_SECRET_KEY}
@@ -12,6 +13,7 @@ services:
       - BOT_LINK=${BOT_LINK}
       - INVITE_LINK=${INVITE_LINK}
       - GROUP_ID=${GROUP_ID}
+      - FOR_LOGS=${FOR_LOGS}
     volumes:
       - ./data:/data
       - ./utils:/app/utils
@@ -31,6 +33,7 @@ services:
       - ADMIN_LOGIN=${ADMIN_LOGIN}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - BOT_TOKEN=${BOT_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL}
     ports:
       - "5001:5001"
     volumes:

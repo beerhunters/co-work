@@ -11,9 +11,10 @@ from web.routes.utils import (
     send_telegram_message_sync,
 )
 from web.app import db
-from utils.logger import setup_logger
+from utils.logger import get_logger
 
-logger = setup_logger(__name__)
+# Тихая настройка логгера для модуля
+logger = get_logger(__name__)
 
 # Московский часовой пояс
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
