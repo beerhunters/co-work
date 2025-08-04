@@ -1,7 +1,7 @@
 import asyncio
 import os
 import re
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 import pytz
@@ -39,12 +39,12 @@ from models.models import (
 from utils.logger import get_logger
 
 # Тихая настройка логгера для модуля
-
 load_dotenv()
 
 router = Router()
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+logger = get_logger(__name__)
 
 
 class Booking(StatesGroup):
@@ -203,6 +203,31 @@ def create_tariff_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
         )
 
 
+def create_date_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создаёт инлайн-клавиатуру с датами (сегодня + 7 дней).
+
+    Returns:
+        InlineKeyboardMarkup: Клавиатура с датами и кнопкой отмены.
+    """
+    today = datetime.now(MOSCOW_TZ).date()
+    buttons = []
+    for i in range(8):  # Сегодня + 7 дней
+        date = today + timedelta(days=i)
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=date.strftime("%d.%m.%Y"),
+                    callback_data=f"date_{date.strftime('%Y-%m-%d')}",
+                )
+            ]
+        )
+    buttons.append([InlineKeyboardButton(text="Отмена", callback_data="cancel")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    logger.debug("Создана клавиатура с датами")
+    return keyboard
+
+
 def create_payment_keyboard(
     confirmation_url: str, amount: float
 ) -> InlineKeyboardMarkup:
@@ -325,7 +350,7 @@ async def process_tariff_selection(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
     """
-    Обработка выбора тарифа. Запрашивает дату.
+    Обработка выбора тарифа. Показывает клавиатуру с датами.
 
     Args:
         callback_query: Callback-запрос с выбранным тарифом.
@@ -348,15 +373,14 @@ async def process_tariff_selection(
     await state.update_data(
         tariff_id=tariff.id,
         tariff_name=tariff.name,
-        tariff_purpose=tariff.purpose.lower(),  # Приводим к нижнему регистру
+        tariff_purpose=tariff.purpose.lower(),
         tariff_service_id=tariff.service_id,
         tariff_price=tariff.price,
     )
     await state.set_state(Booking.ENTER_DATE)
     await callback_query.message.edit_text(
-        text=f"Вы выбрали тариф: {tariff.name}\n"
-        f"Введите дату визита (гггг-мм-дд, например, 2025-07-25):",
-        reply_markup=create_back_keyboard(),
+        text=f"Вы выбрали тариф: {tariff.name}\nВыберите дату визита:",
+        reply_markup=create_date_keyboard(),
     )
     logger.info(
         f"Пользователь {callback_query.from_user.id} выбрал тариф {tariff.name}"
@@ -364,10 +388,71 @@ async def process_tariff_selection(
     await callback_query.answer()
 
 
+@router.callback_query(Booking.ENTER_DATE, F.data.startswith("date_"))
+async def process_date_selection(
+    callback_query: CallbackQuery, state: FSMContext
+) -> None:
+    """
+    Обработка выбора даты через инлайн-клавиатуру.
+
+    Args:
+        callback_query: Callback-запрос с выбранной датой.
+        state: Контекст состояния FSM.
+    """
+    try:
+        visit_date = datetime.strptime(
+            callback_query.data.split("_")[1], "%Y-%m-%d"
+        ).date()
+        today = datetime.now(MOSCOW_TZ).date()
+        if visit_date < today:
+            await callback_query.message.edit_text(
+                text="Дата не может быть в прошлом. Выберите снова:",
+                reply_markup=create_date_keyboard(),
+            )
+            logger.warning(
+                f"Пользователь {callback_query.from_user.id} выбрал прошедшую дату: {visit_date}"
+            )
+            await callback_query.answer()
+            return
+
+        data = await state.get_data()
+        tariff_purpose = data["tariff_purpose"]
+        tariff_name = data["tariff_name"]
+        await state.update_data(visit_date=visit_date)
+        if tariff_purpose == "переговорная":
+            await state.set_state(Booking.ENTER_TIME)
+            await callback_query.message.edit_text(
+                text="Введите время визита (чч:мм, например, 14:30):",
+                reply_markup=create_back_keyboard(),
+            )
+            logger.info(
+                f"Пользователь {callback_query.from_user.id} выбрал дату {visit_date} для тарифа {tariff_name} через клавиатуру"
+            )
+        else:
+            await state.set_state(Booking.ENTER_PROMOCODE)
+            await callback_query.message.edit_text(
+                text="Введите промокод (или /skip для пропуска):",
+                reply_markup=create_back_keyboard(),
+            )
+            logger.info(
+                f"Пользователь {callback_query.from_user.id} выбрал дату {visit_date} для тарифа {tariff_name} через клавиатуру"
+            )
+        await callback_query.answer()
+    except ValueError as e:
+        await callback_query.message.edit_text(
+            text="Ошибка при обработке даты. Попробуйте снова:",
+            reply_markup=create_date_keyboard(),
+        )
+        logger.error(
+            f"Ошибка при обработке даты для пользователя {callback_query.from_user.id}: {str(e)}"
+        )
+        await callback_query.answer()
+
+
 @router.message(Booking.ENTER_DATE)
 async def process_date(message: Message, state: FSMContext) -> None:
     """
-    Обработка введённой даты. Проверяет формат и запрашивает время для 'Переговорной' или промокод.
+    Обработка введённой даты текстом. Проверяет формат и запрашивает время для 'Переговорной' или промокод.
 
     Args:
         message: Входящее сообщение с датой.
@@ -375,10 +460,11 @@ async def process_date(message: Message, state: FSMContext) -> None:
     """
     try:
         visit_date = datetime.strptime(message.text, "%Y-%m-%d").date()
-        if visit_date < datetime.now(MOSCOW_TZ).date():
+        today = datetime.now(MOSCOW_TZ).date()
+        if visit_date < today:
             await message.answer(
-                "Дата не может быть в прошлом. Введите снова:",
-                reply_markup=create_back_keyboard(),
+                text="Дата не может быть в прошлом. Введите снова (гггг-мм-дд) или выберите из календаря:",
+                reply_markup=create_date_keyboard(),
             )
             logger.warning(
                 f"Пользователь {message.from_user.id} ввёл прошедшую дату: {message.text}"
@@ -386,8 +472,8 @@ async def process_date(message: Message, state: FSMContext) -> None:
             return
     except ValueError:
         await message.answer(
-            "Неверный формат даты. Введите в формате гггг-мм-дд (например, 2025-07-25):",
-            reply_markup=create_back_keyboard(),
+            text="Неверный формат даты. Введите в формате гггг-мм-дд (например, 2025-07-25) или выберите из календаря:",
+            reply_markup=create_date_keyboard(),
         )
         logger.warning(
             f"Пользователь {message.from_user.id} ввёл неверный формат даты: {message.text}"
@@ -401,20 +487,20 @@ async def process_date(message: Message, state: FSMContext) -> None:
     if tariff_purpose == "переговорная":
         await state.set_state(Booking.ENTER_TIME)
         await message.answer(
-            "Введите время визита (чч:мм, например, 14:30):",
+            text="Введите время визита (чч:мм, например, 14:30):",
             reply_markup=create_back_keyboard(),
         )
         logger.info(
-            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name}"
+            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name} текстом"
         )
     else:
         await state.set_state(Booking.ENTER_PROMOCODE)
         await message.answer(
-            "Введите промокод (или /skip для пропуска):",
+            text="Введите промокод (или /skip для пропуска):",
             reply_markup=create_back_keyboard(),
         )
         logger.info(
-            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name}"
+            f"Пользователь {message.from_user.id} ввёл дату {visit_date} для тарифа {tariff_name} текстом"
         )
 
 

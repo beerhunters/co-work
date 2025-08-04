@@ -142,7 +142,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id
     text_parts = message.text.split(maxsplit=1)
     logger.info(f"/start от {user_id}, текст: {message.text}")
-    1 / 0
+
     await state.clear()
 
     if not message.from_user:
