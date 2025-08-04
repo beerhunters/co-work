@@ -366,7 +366,8 @@ def init_notification_routes(app: Flask) -> None:
         Проверяет наличие новых уведомлений.
 
         Returns:
-            JSON с количеством непрочитанных уведомлений и последними 5 уведомлениями.
+            JSON с количеством непрочитанных уведомлений и последними 5 уведомлениями,
+            включая target_url для перехода.
 
         Example:
             >>> curl http://localhost:5000/notifications/check_new
@@ -391,6 +392,29 @@ def init_notification_routes(app: Flask) -> None:
             unread_count = get_unread_notifications_count()
             logger.debug(f"Количество непрочитанных уведомлений: {unread_count}")
             recent_notifications = get_recent_notifications(limit=5)
+
+            # Формируем target_url для каждого уведомления, если его нет
+            for notification in recent_notifications:
+                if "target_url" not in notification:
+                    if notification.get("type") == "user" and notification.get(
+                        "user_id"
+                    ):
+                        notification["target_url"] = f"/user/{notification['user_id']}"
+                    elif notification.get("type") == "booking" and notification.get(
+                        "booking_id"
+                    ):
+                        notification["target_url"] = (
+                            f"/booking/{notification['booking_id']}"
+                        )
+                    elif notification.get("type") == "ticket" and notification.get(
+                        "ticket_id"
+                    ):
+                        notification["target_url"] = (
+                            f"/ticket/{notification['ticket_id']}"
+                        )
+                    else:
+                        notification["target_url"] = "#"
+
             logger.debug(f"Последние уведомления: {recent_notifications}")
             response_data = {
                 "status": "success",

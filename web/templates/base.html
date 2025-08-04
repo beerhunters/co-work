@@ -24,7 +24,6 @@
             --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        /* Остальные стили без изменений */
         * {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
@@ -174,6 +173,10 @@
         }
         .notification-item.read {
             opacity: 0.7;
+        }
+        .notification-item.clicking {
+            opacity: 0.5;
+            transition: opacity 0.2s ease;
         }
         .notification-time {
             font-size: 0.8rem;
@@ -622,6 +625,11 @@
          * @returns {string} URL для перехода
          */
         function getNotificationUrl(notification) {
+            // Используем target_url из ответа сервера, если он есть
+            if (notification.target_url && notification.target_url !== '#') {
+                return notification.target_url;
+            }
+            // Резервная логика на случай отсутствия target_url
             if (notification.type === 'user' && notification.user_id) {
                 return `/user/${notification.user_id}`;
             } else if (notification.type === 'booking' && notification.booking_id) {
@@ -740,11 +748,19 @@
 
                     item.addEventListener('click', function(event) {
                         event.stopPropagation();
+                        item.classList.add('clicking');
                         const targetUrl = getNotificationUrl(notification);
+                        if (targetUrl === '#') {
+                            console.log('Нет валидного URL для уведомления:', notification.id);
+                            item.classList.remove('clicking');
+                            return;
+                        }
                         if (!notification.is_read) {
                             markNotificationRead(notification.id, item, targetUrl);
-                        } else if (targetUrl !== '#') {
-                            window.location.href = targetUrl;
+                        } else {
+                            setTimeout(() => {
+                                window.location.href = targetUrl;
+                            }, 200);
                         }
                     });
 
@@ -793,6 +809,7 @@
                 if (data.status === 'success') {
                     item.classList.remove('unread');
                     item.classList.add('read');
+                    item.classList.remove('clicking');
                     item.style.opacity = '1';
 
                     const badge = document.getElementById('notification-badge');
@@ -807,7 +824,7 @@
                     if (targetUrl && targetUrl !== '#') {
                         setTimeout(() => {
                             window.location.href = targetUrl;
-                        }, 300);
+                        }, 200);
                     }
                 } else {
                     throw new Error(data.message || 'Неизвестная ошибка');
@@ -815,6 +832,7 @@
             })
             .catch(error => {
                 console.error('Ошибка при пометке уведомления:', error);
+                item.classList.remove('clicking');
                 item.style.opacity = '1';
                 showAlert('danger', `Ошибка при пометке уведомления: ${error.message}`);
             });
