@@ -1,16 +1,16 @@
-from flask import Flask, render_template, jsonify, flash, request
-from flask_login import login_required
-from datetime import datetime, timedelta
-from typing import Any, Dict, List
-from sqlite3 import OperationalError
 import time
 import uuid
+from datetime import datetime, timedelta
+from sqlite3 import OperationalError
+from typing import Any, Dict
+
+from flask import Flask, render_template, jsonify, flash, request
+from flask_login import login_required
 
 from models.models import Notification, Session
-from web.routes.utils import get_unread_notifications_count, get_recent_notifications
-from web.app import db, MOSCOW_TZ
-
 from utils.logger import get_logger
+from web.app import db, MOSCOW_TZ
+from web.routes.utils import get_unread_notifications_count, get_recent_notifications
 
 # Тихая настройка логгера для модуля
 logger = get_logger(__name__)
@@ -30,24 +30,72 @@ def init_notification_routes(app: Flask) -> None:
     @app.route("/notifications")
     @login_required
     def notifications() -> Any:
-        """Отображение списка уведомлений."""
+        """
+        Отображение списка уведомлений с пагинацией.
+
+        Args:
+            page (optional): Номер страницы (по умолчанию 1).
+
+        Returns:
+            Рендеринг шаблона notifications.html с пагинированным списком уведомлений.
+
+        Notes:
+            Асимптотическая сложность: O(n) для выборки уведомлений, где n — общее число уведомлений.
+        """
         try:
-            notifications = (
+            page = request.args.get("page", 1, type=int)
+            per_page = 15
+            pagination = (
                 db.session.query(Notification)
                 .order_by(Notification.created_at.desc())
-                .all()
+                .paginate(page=page, per_page=per_page, error_out=False)
             )
+            notifications = pagination.items
             unread_notifications = get_unread_notifications_count()
-            recent_notifications = get_recent_notifications()
+            recent_notifications = [
+                {
+                    "id": n.id,
+                    "message": n.message,
+                    "is_read": n.is_read,
+                    "user_id": n.user_id,
+                    "booking_id": n.booking_id,
+                    "ticket_id": n.ticket_id,
+                    "type": (
+                        "ticket"
+                        if n.ticket_id
+                        else (
+                            "booking"
+                            if n.booking_id
+                            else "user" if n.user_id else "info"
+                        )
+                    ),
+                    "target_url": (
+                        f"/ticket/{n.ticket_id}"
+                        if n.ticket_id
+                        else (
+                            f"/booking/{n.booking_id}"
+                            if n.booking_id
+                            else f"/user/{n.user_id}" if n.user_id else "#"
+                        )
+                    ),
+                    "created_at": (
+                        n.created_at.strftime("%Y-%m-%d %H:%M")
+                        if n.created_at
+                        else "Неизвестно"
+                    ),
+                }
+                for n in notifications
+            ]
 
             logger.info(
-                f"Загрузка страницы уведомлений: {len(notifications)} уведомлений"
+                f"Загрузка страницы уведомлений: {len(notifications)} уведомлений, страница {page}"
             )
             return render_template(
                 "notifications.html",
                 notifications=notifications,
                 unread_notifications=unread_notifications,
                 recent_notifications=recent_notifications,
+                pagination=pagination,
             )
         except Exception as e:
             logger.error(f"Ошибка при загрузке страницы уведомлений: {str(e)}")
@@ -57,28 +105,31 @@ def init_notification_routes(app: Flask) -> None:
                 notifications=[],
                 unread_notifications=0,
                 recent_notifications=[],
+                pagination=None,
             )
 
     @app.route("/get_notifications", methods=["GET"])
     @login_required
     def get_notifications() -> Any:
         """
-        Получение данных об уведомлениях для AJAX.
+        Получение данных об уведомлениях для AJAX с пагинацией.
 
         Args:
             since_id (optional): ID последнего уведомления для получения только новых.
+            page (optional): Номер страницы (по умолчанию 1).
 
         Returns:
             JSON с количеством непрочитанных уведомлений и списком последних уведомлений.
 
         Notes:
-            Асимптотическая сложность: O(n) для выборки уведомлений, где n — число уведомлений.
-            Обрабатывает как объекты Notification, так и словари от get_recent_notifications.
+            Асимптотическая сложность: O(n) для выборки уведомлений, где n — число уведомлений на странице.
         """
         try:
             request_id = str(uuid.uuid4())
             logger.debug(f"Запрос на получение уведомлений, ID: {request_id}")
             since_id = request.args.get("since_id", type=int)
+            page = request.args.get("page", 1, type=int)
+            per_page = 15
 
             unread_count = get_unread_notifications_count()
             if since_id:
@@ -86,62 +137,55 @@ def init_notification_routes(app: Flask) -> None:
                     db.session.query(Notification)
                     .filter(Notification.id > since_id)
                     .order_by(Notification.created_at.desc())
-                    # .limit(10)
+                    .limit(per_page)
                     .all()
                 )
             else:
-                recent_notifications = get_recent_notifications()
-
-            if not isinstance(recent_notifications, list):
-                logger.warning(
-                    f"recent_notifications не является списком: {type(recent_notifications)}"
+                pagination = (
+                    db.session.query(Notification)
+                    .order_by(Notification.created_at.desc())
+                    .paginate(page=page, per_page=per_page, error_out=False)
                 )
-                recent_notifications = []
+                recent_notifications = pagination.items
 
             formatted_notifications = []
             for notification in recent_notifications:
                 try:
-                    is_dict = isinstance(notification, dict)
-
-                    if is_dict:
-                        # Если это словарь (от get_recent_notifications), используем его поля
-                        formatted_notification = {
-                            "id": notification.get("id"),
-                            "message": notification.get("message", ""),
-                            "type": notification.get("type", "info"),
-                            "is_read": notification.get("is_read", False),
-                            "user_id": notification.get("user_id"),
-                            "booking_id": notification.get("booking_id"),
-                            "ticket_id": notification.get("ticket_id"),
-                            "target_url": notification.get("target_url", "#"),
-                            "created_at": notification.get("created_at", "Неизвестно"),
-                        }
-                    else:
-                        # Если это объект Notification (от since_id)
-                        target_url = "/notifications"
-                        if notification.user_id:
-                            target_url = f"/user/{notification.user_id}"
-                        elif notification.booking_id:
-                            target_url = f"/booking/{notification.booking_id}"
-                        elif notification.ticket_id:
-                            target_url = f"/ticket/{notification.ticket_id}"
-
-                        formatted_notification = {
-                            "id": getattr(notification, "id", None),
-                            "message": getattr(notification, "message", ""),
-                            "type": "info",  # Модель Notification не содержит поле type
-                            "is_read": getattr(notification, "is_read", False),
-                            "user_id": getattr(notification, "user_id", None),
-                            "booking_id": getattr(notification, "booking_id", None),
-                            "ticket_id": getattr(notification, "ticket_id", None),
-                            "target_url": target_url,
-                            "created_at": (
-                                notification.created_at.strftime("%Y-%m-%d %H:%M")
-                                if hasattr(notification, "created_at")
-                                and notification.created_at
-                                else "Неизвестно"
-                            ),
-                        }
+                    formatted_notification = {
+                        "id": notification.id,
+                        "message": notification.message,
+                        "is_read": notification.is_read,
+                        "user_id": notification.user_id,
+                        "booking_id": notification.booking_id,
+                        "ticket_id": notification.ticket_id,
+                        "type": (
+                            "ticket"
+                            if notification.ticket_id
+                            else (
+                                "booking"
+                                if notification.booking_id
+                                else "user" if notification.user_id else "info"
+                            )
+                        ),
+                        "target_url": (
+                            f"/ticket/{notification.ticket_id}"
+                            if notification.ticket_id
+                            else (
+                                f"/booking/{notification.booking_id}"
+                                if notification.booking_id
+                                else (
+                                    f"/user/{notification.user_id}"
+                                    if notification.user_id
+                                    else "#"
+                                )
+                            )
+                        ),
+                        "created_at": (
+                            notification.created_at.strftime("%Y-%m-%d %H:%M")
+                            if notification.created_at
+                            else "Неизвестно"
+                        ),
+                    }
                     formatted_notifications.append(formatted_notification)
                 except Exception as e:
                     logger.warning(f"Ошибка форматирования уведомления: {str(e)}")
@@ -151,10 +195,25 @@ def init_notification_routes(app: Flask) -> None:
                 "unread_count": int(unread_count) if unread_count is not None else 0,
                 "recent_notifications": formatted_notifications,
                 "status": "success",
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": (
+                        pagination.total // per_page
+                        + (1 if pagination.total % per_page else 0)
+                        if not since_id
+                        else 1
+                    ),
+                    "total_items": (
+                        pagination.total
+                        if not since_id
+                        else len(formatted_notifications)
+                    ),
+                },
             }
 
             logger.debug(
-                f"Отправляем данные (ID: {request_id}): unread_count={response_data['unread_count']}, notifications_count={len(formatted_notifications)}"
+                f"Отправляем данные (ID: {request_id}): unread_count={response_data['unread_count']}, notifications_count={len(formatted_notifications)}, page={page}"
             )
             return jsonify(response_data)
 
@@ -168,6 +227,12 @@ def init_notification_routes(app: Flask) -> None:
                         "recent_notifications": [],
                         "status": "error",
                         "message": str(e),
+                        "pagination": {
+                            "page": 1,
+                            "per_page": 15,
+                            "total_pages": 1,
+                            "total_items": 0,
+                        },
                     }
                 ),
                 500,
@@ -395,27 +460,30 @@ def init_notification_routes(app: Flask) -> None:
             logger.debug(f"Количество непрочитанных уведомлений: {unread_count}")
             recent_notifications = get_recent_notifications(limit=5)
 
-            # Формируем target_url для каждого уведомления, если его нет
             for notification in recent_notifications:
                 if "target_url" not in notification:
-                    if notification.get("type") == "user" and notification.get(
-                        "user_id"
-                    ):
-                        notification["target_url"] = f"/user/{notification['user_id']}"
-                    elif notification.get("type") == "booking" and notification.get(
-                        "booking_id"
-                    ):
-                        notification["target_url"] = (
+                    notification["type"] = (
+                        "ticket"
+                        if notification.get("ticket_id")
+                        else (
+                            "booking"
+                            if notification.get("booking_id")
+                            else "user" if notification.get("user_id") else "info"
+                        )
+                    )
+                    notification["target_url"] = (
+                        f"/ticket/{notification['ticket_id']}"
+                        if notification.get("ticket_id")
+                        else (
                             f"/booking/{notification['booking_id']}"
+                            if notification.get("booking_id")
+                            else (
+                                f"/user/{notification['user_id']}"
+                                if notification.get("user_id")
+                                else "#"
+                            )
                         )
-                    elif notification.get("type") == "ticket" and notification.get(
-                        "ticket_id"
-                    ):
-                        notification["target_url"] = (
-                            f"/ticket/{notification['ticket_id']}"
-                        )
-                    else:
-                        notification["target_url"] = "#"
+                    )
 
             logger.debug(f"Последние уведомления: {recent_notifications}")
             response_data = {

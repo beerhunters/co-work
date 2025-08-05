@@ -14,6 +14,10 @@
     .badge {
         font-size: 12px;
     }
+    .pagination {
+        margin-top: 1rem;
+        justify-content: center;
+    }
 </style>
 
 <div class="card">
@@ -67,6 +71,27 @@
                 </table>
             </div>
         </div>
+        {% if pagination %}
+        <nav aria-label="Пагинация уведомлений">
+            <ul class="pagination">
+                <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                    <a class="page-link" href="{{ url_for('notifications', page=pagination.prev_num) if pagination.has_prev else '#' }}" onclick="loadPage({{ pagination.prev_num }}); return false;">Предыдущая</a>
+                </li>
+                {% for page_num in pagination.iter_pages(left_edge=2, left_current=2, right_current=3, right_edge=2) %}
+                {% if page_num %}
+                <li class="page-item {{ 'active' if page_num == pagination.page }}">
+                    <a class="page-link" href="{{ url_for('notifications', page=page_num) }}" onclick="loadPage({{ page_num }}); return false;">{{ page_num }}</a>
+                </li>
+                {% else %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+                {% endfor %}
+                <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+                    <a class="page-link" href="{{ url_for('notifications', page=pagination.next_num) if pagination.has_next else '#' }}" onclick="loadPage({{ pagination.next_num }}); return false;">Следующая</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
     </div>
 </div>
 
@@ -122,6 +147,90 @@ function formatNotificationMessage(message, targetUrl) {
     }
 
     return message.length > maxLength ? message.substring(0, maxLength - 3) + '...' : message;
+}
+
+/**
+ * Загружает страницу уведомлений через AJAX.
+ * @param {number} page - Номер страницы.
+ */
+function loadPage(page) {
+    fetch(`/get_notifications?page=${page}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'success') {
+            updateNotificationsTable(data.recent_notifications);
+            updatePagination(data.pagination);
+            window.history.pushState({}, '', `/notifications?page=${page}`);
+        } else {
+            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при загрузке уведомлений');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        window.NotificationUtils.showAlert('danger', `Ошибка при загрузке уведомлений: ${error.message}`);
+    });
+}
+
+/**
+ * Обновляет пагинацию на основе данных от сервера.
+ * @param {object} pagination - Данные пагинации {page, per_page, total_pages, total_items}.
+ */
+function updatePagination(pagination) {
+    const paginationContainer = document.querySelector('.pagination');
+    if (!paginationContainer) return;
+
+    let html = `
+        <li class="page-item ${pagination.page === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadPage(${pagination.page - 1}); return false;">Предыдущая</a>
+        </li>
+    `;
+
+    const currentPage = pagination.page;
+    const totalPages = pagination.total_pages;
+    const leftEdge = 2;
+    const leftCurrent = 2;
+    const rightCurrent = 3;
+    const rightEdge = 2;
+
+    let pages = [];
+    for (let i = 1; i <= totalPages; i++) {
+        if (
+            i <= leftEdge ||
+            i > totalPages - rightEdge ||
+            (i >= currentPage - leftCurrent && i <= currentPage + rightCurrent)
+        ) {
+            pages.push(i);
+        }
+    }
+
+    let lastPage = 0;
+    pages.forEach(page => {
+        if (page - lastPage > 1) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+        html += `
+            <li class="page-item ${page === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="loadPage(${page}); return false;">${page}</a>
+            </li>
+        `;
+        lastPage = page;
+    });
+
+    html += `
+        <li class="page-item ${pagination.page === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadPage(${pagination.page + 1}); return false;">Следующая</a>
+        </li>
+    `;
+
+    paginationContainer.innerHTML = html;
 }
 
 /**
@@ -231,6 +340,8 @@ function clearAllNotifications() {
         if (data.status === 'success') {
             const tableBody = document.getElementById('notifications-table-body');
             tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет уведомлений</td></tr>';
+            const paginationContainer = document.querySelector('.pagination');
+            if (paginationContainer) paginationContainer.innerHTML = '';
             window.NotificationUtils.showAlert('success', data.message);
             window.NotificationUtils.loadNotifications();
         } else {
@@ -316,6 +427,15 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('window.NotificationUtils.loadNotifications не определена');
     }
+
+    // Обработчик кликов по пагинации
+    document.querySelectorAll('.pagination .page-link').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const page = parseInt(this.getAttribute('onclick').match(/\d+/)[0]);
+            if (!isNaN(page)) loadPage(page);
+        });
+    });
 });
 </script>
 {% endblock %}
