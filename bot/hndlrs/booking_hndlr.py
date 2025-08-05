@@ -604,7 +604,7 @@ async def process_promocode(message: Message, state: FSMContext) -> None:
     duration = data.get("duration")
     if tariff_purpose == "переговорная" and duration:
         amount = tariff_price * duration
-        if duration > 3:
+        if duration >= 3:
             additional_discount = 10
             total_discount = min(100, discount + additional_discount)
             amount *= 1 - total_discount / 100
