@@ -8,6 +8,12 @@
         overflow-y: auto;
         margin-top: 1rem;
     }
+    .table-hover {
+        font-size: 14px;
+    }
+    .badge {
+        font-size: 12px;
+    }
 </style>
 
 <div class="card">
@@ -32,17 +38,17 @@
                             <th>Сообщение</th>
                             <th>Дата создания</th>
                             <th>Статус</th>
-                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody id="notifications-table-body">
                         {% for notification in recent_notifications %}
                         <tr class="{{ 'table-info' if not notification.is_read else '' }}"
                             data-notification-id="{{ notification.id }}"
+                            data-target-url="{{ notification.target_url }}"
                             onclick="redirectToTarget({{ notification.id }}, '{{ notification.target_url }}')"
-                            style="cursor: {{ 'pointer' if notification.target_url != '/notifications' else 'default' }};">
+                            style="cursor: {{ 'pointer' if notification.target_url != '/notifications' and notification.target_url != '#' else 'default' }};">
                             <td>{{ notification.id }}</td>
-                            <td>{{ notification.message }}</td>
+                            <td class="notification-message">{{ notification.message|truncate(100) }}</td>
                             <td>{{ notification.created_at }}</td>
                             <td>
                                 {% if notification.is_read %}
@@ -51,18 +57,10 @@
                                     <span class="badge bg-warning">Непрочитано</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                {% if not notification.is_read %}
-                                    <button type="button" class="btn btn-sm btn-outline-primary"
-                                            onclick="markSingleNotificationRead({{ notification.id }}); event.stopPropagation();">
-                                        <i class="fas fa-check"></i> Прочитать
-                                    </button>
-                                {% endif %}
-                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="text-center text-muted">Нет уведомлений</td>
+                            <td colspan="4" class="text-center text-muted">Нет уведомлений</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -101,6 +99,32 @@ function showAlert(type, message) {
 }
 
 /**
+ * Форматирует сообщение уведомления с указанием типа (Пользователь/Бронь/Заявка).
+ * @param {string} message - Исходное сообщение.
+ * @param {string} targetUrl - Целевой URL уведомления.
+ * @returns {string} Отформатированное сообщение.
+ */
+function formatNotificationMessage(message, targetUrl) {
+    const maxLength = 50;
+    let prefix = '';
+    let idMatch = targetUrl.match(/\/(booking|ticket|user)\/(\d+)/);
+
+    if (idMatch) {
+        const type = idMatch[1];
+        const id = idMatch[2];
+        if (type === 'booking') prefix = `Бронь #${id}: `;
+        else if (type === 'ticket') prefix = `Заявка #${id}: `;
+        else if (type === 'user') prefix = `Пользователь #${id}: `;
+        message = message.split('\n')[0]; // Берём первую строку
+        return prefix + (message.length > maxLength - prefix.length
+            ? message.substring(0, maxLength - prefix.length - 3) + '...'
+            : message);
+    }
+
+    return message.length > maxLength ? message.substring(0, maxLength - 3) + '...' : message;
+}
+
+/**
  * Помечает все уведомления как прочитанные на странице.
  */
 function markAllNotificationsReadPage() {
@@ -126,8 +150,6 @@ function markAllNotificationsReadPage() {
                 row.classList.remove('table-info');
                 const statusCell = row.children[3];
                 statusCell.innerHTML = '<span class="badge bg-success">Прочитано</span>';
-                const actionCell = row.children[4];
-                actionCell.innerHTML = '';
             });
             window.NotificationUtils.showAlert('success', data.message);
             window.NotificationUtils.loadNotifications();
@@ -140,48 +162,6 @@ function markAllNotificationsReadPage() {
         window.NotificationUtils.showAlert('danger', `Ошибка при обновлении уведомлений: ${error.message}`);
     })
     .finally(() => {
-        button.innerHTML = originalText;
-        button.disabled = false;
-    });
-}
-
-/**
- * Помечает одно уведомление как прочитанное.
- * @param {number} notificationId - ID уведомления.
- */
-function markSingleNotificationRead(notificationId) {
-    const button = event.target.closest('button');
-    const row = button.closest('tr');
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    button.disabled = true;
-
-    fetch(`/notifications/mark_read/${notificationId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.status === 'success') {
-            row.classList.remove('table-info');
-            const statusCell = row.children[3];
-            statusCell.innerHTML = '<span class="badge bg-success">Прочитано</span>';
-            button.remove();
-            window.NotificationUtils.loadNotifications();
-        } else {
-            window.NotificationUtils.showAlert('danger', data.message || 'Ошибка при обновлении уведомления');
-            button.innerHTML = originalText;
-            button.disabled = false;
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка:', error);
-        window.NotificationUtils.showAlert('danger', `Ошибка при обновлении уведомления: ${error.message}`);
         button.innerHTML = originalText;
         button.disabled = false;
     });
@@ -250,7 +230,7 @@ function clearAllNotifications() {
     .then(data => {
         if (data.status === 'success') {
             const tableBody = document.getElementById('notifications-table-body');
-            tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет уведомлений</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет уведомлений</td></tr>';
             window.NotificationUtils.showAlert('success', data.message);
             window.NotificationUtils.loadNotifications();
         } else {
@@ -275,7 +255,7 @@ function updateNotificationsTable(notifications) {
     tableBody.innerHTML = '';
 
     if (notifications.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет уведомлений</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет уведомлений</td></tr>';
         return;
     }
 
@@ -283,28 +263,26 @@ function updateNotificationsTable(notifications) {
         const row = document.createElement('tr');
         row.className = notification.is_read ? '' : 'table-info';
         row.dataset.notificationId = notification.id;
+        row.dataset.targetUrl = notification.target_url;
 
         if (notification.target_url && notification.target_url !== '/notifications' && notification.target_url !== '#') {
             row.style.cursor = 'pointer';
             row.onclick = () => redirectToTarget(notification.id, notification.target_url);
         }
 
+        const formattedMessage = formatNotificationMessage(
+            window.NotificationUtils.escapeHtml(notification.message),
+            notification.target_url
+        );
+
         row.innerHTML = `
             <td>${notification.id}</td>
-            <td>${window.NotificationUtils.escapeHtml(notification.message)}</td>
+            <td class="notification-message">${formattedMessage}</td>
             <td>${notification.created_at}</td>
             <td>
                 ${notification.is_read
                     ? '<span class="badge bg-success">Прочитано</span>'
                     : '<span class="badge bg-warning">Непрочитано</span>'}
-            </td>
-            <td>
-                ${!notification.is_read
-                    ? `<button type="button" class="btn btn-sm btn-outline-primary"
-                               onclick="markSingleNotificationRead(${notification.id}); event.stopPropagation();">
-                            <i class="fas fa-check"></i> Прочитать
-                       </button>`
-                    : ''}
             </td>
         `;
         tableBody.appendChild(row);
@@ -318,6 +296,16 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('Кнопка clearNotificationsBtn не найдена');
     }
+
+    // Применяем форматирование сообщений к уже загруженным уведомлениям
+    document.querySelectorAll('#notifications-table-body tr').forEach(row => {
+        const messageCell = row.querySelector('.notification-message');
+        const targetUrl = row.dataset.targetUrl || '';
+        if (messageCell) {
+            const originalMessage = messageCell.textContent;
+            messageCell.textContent = formatNotificationMessage(originalMessage, targetUrl);
+        }
+    });
 
     // Периодическая проверка новых уведомлений
     if (window.NotificationUtils && window.NotificationUtils.loadNotifications) {

@@ -86,7 +86,7 @@ def init_notification_routes(app: Flask) -> None:
                     db.session.query(Notification)
                     .filter(Notification.id > since_id)
                     .order_by(Notification.created_at.desc())
-                    .limit(10)
+                    # .limit(10)
                     .all()
                 )
             else:
