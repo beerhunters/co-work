@@ -9,6 +9,7 @@ from sqlalchemy import desc
 
 from models.models import Notification
 from utils.bot_instance import get_bot
+from unicodedata import normalize
 
 from web.app import db
 
@@ -39,19 +40,20 @@ AVATAR_FOLDER = "/app/static/avatars"
 
 def allowed_file(filename: str) -> bool:
     """
-    Проверяет, допустимое ли расширение файла.
+    Проверяет, является ли файл допустимым по расширению.
 
     Args:
-        filename: Имя файла.
+        filename: Имя файла для проверки.
 
     Returns:
-        True, если расширение допустимо, иначе False.
+        True, если файл имеет допустимое расширение, иначе False.
 
-    Example:
-        >>> allowed_file("image.png")
-        True
+    Notes:
+        Проверяет наличие точки в имени файла и допустимое расширение.
+        Асимптотическая сложность: O(1).
     """
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+    extension = os.path.splitext(filename)[1][1:].lower()
+    return extension in ALLOWED_EXTENSIONS
 
 
 def allowed_avatar_file(filename: str) -> bool:
