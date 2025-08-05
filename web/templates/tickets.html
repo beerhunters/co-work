@@ -32,14 +32,47 @@
     .action-icon.delete:hover {
         color: #b02a37;
     }
+    /* Стили для формы фильтра */
+    .search-form {
+        margin-bottom: 20px;
+    }
+    .search-form .form-control,
+    .search-form .form-select {
+        font-size: 14px;
+    }
+    .search-form .btn {
+        font-size: 14px;
+    }
 </style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Список заявок</h3>
-        <!-- Поле поиска -->
-        <div class="input-group mt-3" style="max-width: 300px;">
-            <input type="text" id="searchInput" class="form-control" placeholder="Поиск по описанию или пользователю">
-        </div>
+        <!-- Форма фильтра -->
+        <form method="GET" action="{{ url_for('tickets') }}" class="search-form mt-3">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="searchInput" class="form-label">Поиск по описанию или пользователю</label>
+                    <input type="text" id="searchInput" class="form-control" placeholder="Поиск по описанию или пользователю">
+                </div>
+                <div class="col-md-4">
+                    <label for="status" class="form-label">Статус</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="" {% if not request.args.get('status') %}selected{% endif %}>Все</option>
+                        <option value="Открыта" {% if request.args.get('status') == 'Открыта' %}selected{% endif %}>Открыта</option>
+                        <option value="В работе" {% if request.args.get('status') == 'В работе' %}selected{% endif %}>В работе</option>
+                        <option value="Закрыта" {% if request.args.get('status') == 'Закрыта' %}selected{% endif %}>Закрыта</option>
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-filter"></i> Фильтровать
+                    </button>
+                    <a href="{{ url_for('tickets') }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Сбросить
+                    </a>
+                </div>
+            </div>
+        </form>
     </div>
     <div class="card-body">
         <table class="table table-bordered table-hover" id="ticketsTable">
@@ -82,13 +115,13 @@
             <ul class="pagination justify-content-center mt-3">
                 {% if pagination.has_prev %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('tickets', page=pagination.prev_num) }}">Предыдущая</a>
+                    <a class="page-link" href="{{ url_for('tickets', page=pagination.prev_num, status=request.args.get('status', '')) }}">Предыдущая</a>
                 </li>
                 {% endif %}
                 {% for page_num in pagination.iter_pages() %}
                 {% if page_num %}
                 <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                    <a class="page-link" href="{{ url_for('tickets', page=page_num) }}">{{ page_num }}</a>
+                    <a class="page-link" href="{{ url_for('tickets', page=page_num, status=request.args.get('status', '')) }}">{{ page_num }}</a>
                 </li>
                 {% else %}
                 <li class="page-item disabled"><span class="page-link">...</span></li>
@@ -96,7 +129,7 @@
                 {% endfor %}
                 {% if pagination.has_next %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('tickets', page=pagination.next_num) }}">Следующая</a>
+                    <a class="page-link" href="{{ url_for('tickets', page=pagination.next_num, status=request.args.get('status', '')) }}">Следующая</a>
                 </li>
                 {% endif %}
             </ul>
@@ -104,7 +137,7 @@
     </div>
 </div>
 
-<!-- JavaScript для фильтрации таблицы -->
+<!-- JavaScript для клиентской фильтрации -->
 <script>
 document.getElementById('searchInput').addEventListener('input', function() {
     const searchValue = this.value.toLowerCase();

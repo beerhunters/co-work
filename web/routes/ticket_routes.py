@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, redirect, url_for, flash
 from flask_login import login_required
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 import pytz
 
 from models.models import Ticket, TicketStatus, User
@@ -20,6 +20,45 @@ logger = get_logger(__name__)
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 
+def format_ticket_status_notification(
+    user: User, ticket: Ticket, status: str, comment: Optional[str] = None
+) -> str:
+    """
+    Форматирует уведомление об изменении статуса заявки для отправки пользователю.
+
+    Args:
+        user: Объект пользователя.
+        ticket: Объект заявки.
+        status: Новый статус заявки (например, "Открыта", "В работе", "Закрыта").
+        comment: Комментарий к изменению статуса (если указан, по умолчанию None).
+
+    Returns:
+        str: Отформатированное HTML-сообщение для отправки в Telegram.
+    """
+    status_emojis = {
+        "Открыта": "🆕",
+        "В работе": "⚙️",
+        "Закрыта": "✅",
+    }
+
+    status_emoji = status_emojis.get(status, "📋")
+    comment_info = f"\n└ <b>Комментарий:</b> {comment}" if comment else ""
+
+    message = f"""{status_emoji} <b>Статус заявки #{ticket.id} изменён!</b>
+
+📋 <b>Детали:</b>
+├ <b>ID:</b> {ticket.id}
+├ <b>Статус:</b> {status}{comment_info}
+└ <b>Описание:</b> {ticket.description}
+
+⏰ <i>Время изменения: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    logger.debug(
+        f"Сформировано сообщение об изменении статуса заявки #{ticket.id}:\n{message}"
+    )
+    return message.strip()
+
+
 def init_ticket_routes(app: Flask) -> None:
     """Инициализация маршрутов для работы с заявками."""
 
@@ -27,19 +66,35 @@ def init_ticket_routes(app: Flask) -> None:
     @login_required
     def tickets() -> Any:
         """
-        Отображение списка заявок.
+        Отображение списка заявок с возможностью фильтрации по статусу.
 
         Returns:
-            Рендеринг шаблона tickets.html с данными заявок.
+            Рендеринг шаблона tickets.html с отфильтрованными данными заявок.
         """
         page = request.args.get("page", 1, type=int)
+        status = request.args.get("status", "").strip()
         per_page = 10
-        pagination = (
-            db.session.query(Ticket)
-            .order_by(Ticket.created_at.desc())
-            .paginate(page=page, per_page=per_page, error_out=False)
-        )
+
+        # Базовый запрос для получения заявок
+        query = db.session.query(Ticket).order_by(Ticket.created_at.desc())
+
+        # Фильтрация по статусу
+        if status:
+            try:
+                status_enum = TicketStatus(status)
+                query = query.filter(Ticket.status == status_enum)
+                logger.debug(f"Применён фильтр по статусу: {status}")
+            except ValueError:
+                flash("Неверный статус", "error")
+                logger.warning(f"Неверный статус в запросе: {status}")
+
+        # Пагинация
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         tickets = pagination.items
+        logger.info(
+            f"Найдено {len(tickets)} заявок на странице {page} после фильтрации"
+        )
+
         unread_notifications = get_unread_notifications_count()
         recent_notifications = get_recent_notifications()
         return render_template(
@@ -163,9 +218,9 @@ def init_ticket_routes(app: Flask) -> None:
 
                 # Отправка уведомления пользователю
                 user = db.session.get(User, ticket.user_id)
-                message = f"Статус заявки #{ticket.id} изменён на '{status}'"
-                if comment:
-                    message += f"\nКомментарий: {comment}"
+                message = format_ticket_status_notification(
+                    user, ticket, status, comment
+                )
                 success = send_telegram_message_sync(user.telegram_id, message)
                 if success:
                     logger.info(
@@ -173,7 +228,7 @@ def init_ticket_routes(app: Flask) -> None:
                     )
                 else:
                     logger.error(
-                        f"Не удалось отправить сообщение пользователю {user.telegram_id}"
+                        f"Не удалось отправить сообщение пользователю {user.telegram_id} для заявки #{ticket.id}"
                     )
                     flash("Заявка обновлена, но уведомление не отправлено", "warning")
                 flash("Данные заявки обновлены", "success")
@@ -195,7 +250,7 @@ def init_ticket_routes(app: Flask) -> None:
                         else None
                     ),
                     updated_at_msk=(
-                        ticket.created_at.astimezone(MOSCOW_TZ)
+                        ticket.updated_at.astimezone(MOSCOW_TZ)
                         if ticket.updated_at
                         else None
                     ),
