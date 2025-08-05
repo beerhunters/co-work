@@ -45,7 +45,7 @@
         display: flex;
         align-items: center;
         min-height: calc(100% - 1rem);
-        max-width: 700px; /* Фиксированная ширина модального окна */
+        max-width: 700px;
         margin: 0 auto;
     }
 
@@ -53,27 +53,27 @@
         border: none;
         border-radius: 8px;
         width: 100%;
-        max-width: 700px; /* Убедимся, что контент не превышает ширину диалога */
+        max-width: 700px;
     }
 
     .modal-body {
-        padding: 10px; /* Небольшие отступы для визуального комфорта */
+        padding: 10px;
         text-align: center;
-        width: 100%; /* Занимает всю ширину .modal-content */
-        max-height: 400px; /* Фиксированная высота тела модального окна */
-        overflow: hidden; /* Обрезает содержимое, выходящее за границы */
-        box-sizing: border-box; /* Учитываем отступы в размерах */
-        display: flex; /* Flex для центрирования */
-        align-items: center; /* Вертикальное центрирование */
-        justify-content: center; /* Горизонтальное центрирование */
+        width: 100%;
+        max-height: 400px;
+        overflow: hidden;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .modal {
-        z-index: 999999 !important; /* Модальное окно поверх других элементов */
+        z-index: 999999 !important;
     }
 
     .modal-backdrop {
-        z-index: 999998 !important; /* Тень чуть ниже модального окна */
+        z-index: 999998 !important;
     }
 
     .avatar-actions {
@@ -108,6 +108,31 @@
         border-color: #bd2130;
         color: white;
     }
+
+    /* Стили для кликабельных ссылок */
+    .clickable-link {
+        color: #007bff;
+        text-decoration: none;
+        transition: color 0.3s ease, text-decoration 0.3s ease;
+    }
+
+    .clickable-link:hover {
+        color: #0056b3;
+        text-decoration: underline;
+    }
+
+    .clickable-link.disabled {
+        color: #6c757d;
+        pointer-events: none;
+        cursor: default;
+    }
+        /* Стили для выделения заголовков */
+    .form-label-highlight {
+        font-weight: 600;
+        color: #0056b3;
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+    }
 </style>
 {% endblock %}
 
@@ -126,7 +151,7 @@
                 <div>
                 {% endif %}
                     <div class="form-group">
-                        <label>ФИО</label>
+                        <label class="form-label-highlight">ФИО</label>
                         {% if edit %}
                         <input type="text" class="form-control" name="full_name" value="{{ user.full_name or '' }}" required>
                         {% else %}
@@ -134,7 +159,7 @@
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Телефон</label>
+                        <label class="form-label-highlight">Телефон</label>
                         {% if edit %}
                         <input type="text" class="form-control" name="phone" value="{{ user.phone or '' }}" required>
                         {% else %}
@@ -142,23 +167,51 @@
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Email</label>
+                        <label class="form-label-highlight">Email</label>
                         {% if edit %}
                         <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" required>
                         {% else %}
-                        <p>{{ user.email or 'Не указано' }}</p>
+                        <p>
+                            {% if user.email %}
+                            <a href="mailto:{{ user.email }}" class="clickable-link" aria-label="Отправить email пользователю {{ user.email }}">{{ user.email }}</a>
+                            {% else %}
+                            Не указано
+                            {% endif %}
+                        </p>
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Username</label>
+                        <label class="form-label-highlight">Username</label>
                         {% if edit %}
                         <input type="text" class="form-control" name="username" value="{{ user.username or '' }}">
                         {% else %}
-                        <p>{{ user.username or 'Не указано' }}</p>
+                        <p>
+                            {% if user.username%}
+                            <a href="https://t.me/{{ user.username }}" target="_blank" class="clickable-link" aria-label="Перейти к Telegram-профилю {{ user.username }}">{{ user.username }}</a>
+                            {% elif user.username %}
+                            {{ user.username }}
+                            {% else %}
+                            Не указано
+                            {% endif %}
+                        </p>
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Успешные бронирования</label>
+                        <label class="form-label-highlight">Telegram ID</label>
+                        {% if edit %}
+                            <input type="text" class="form-control" name="telegram_id" value="{{ user.telegram_id or '' }}">
+                        {% else %}
+                            <p>
+                                {% if user.telegram_id is not none %}
+                                    {{ user.telegram_id }}
+                                {% else %}
+                                    Не указано
+                                {% endif %}
+                            </p>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label-highlight">Успешные бронирования</label>
                         {% if edit %}
                         <input type="text" class="form-control" name="successful_bookings" value="{{ user.successful_bookings or '0' }}">
                         {% else %}
@@ -166,7 +219,7 @@
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Код языка</label>
+                        <label class="form-label-highlight">Код языка</label>
                         {% if edit %}
                         <input type="text" class="form-control" name="language_code" value="{{ user.language_code or 'ru' }}">
                         {% else %}
@@ -174,32 +227,28 @@
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Количество приведённых друзей</label>
+                        <label class="form-label-highlight">Количество приведённых друзей</label>
                         <p>{{ user.invited_count }}</p>
                     </div>
                     <div class="form-group">
-                        <label>Пригласивший пользователь</label>
+                        <label class="form-label-highlight">Пригласивший пользователь</label>
                         <p>{{ referrer_name }}</p>
                     </div>
                     <div class="form-group">
-                        <label>Telegram ID</label>
-                        <p>{{ user.telegram_id }}</p>
-                    </div>
-                    <div class="form-group">
-                        <label>Дата первого входа</label>
+                        <label class="form-label-highlight">Дата первого входа</label>
                         <p>{{ user.first_join_time.strftime('%Y-%m-%d %H:%M:%S %Z') if user.first_join_time else 'Не указано' }}</p>
                     </div>
                     <div class="form-group">
-                        <label>Дата регистрации</label>
+                        <label class="form-label-highlight">Дата регистрации</label>
                         <p>{{ user.reg_date.strftime('%Y-%m-%d %H:%M:%S %Z') if user.reg_date else 'Не указано' }}</p>
                     </div>
                     <div class="form-group">
-                        <label>Согласие с правилами</label>
+                        <label class="form-label-highlight">Согласие с правилами</label>
                         <p>{{ '✅' if user.agreed_to_terms else '❌' }}</p>
                     </div>
                     {% if edit %}
                     <div class="form-group">
-                        <label>Аватар</label>
+                        <label class="form-label-highlight">Аватар</label>
                         <input type="file" class="form-control-file" name="avatar" accept="image/*">
                         <small class="form-text text-muted">Максимальный размер: 5 МБ. Форматы: PNG, JPG, JPEG, GIF</small>
                     </div>
@@ -394,10 +443,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('modal-backdrop удалён');
             }
             document.body.classList.remove('modal-open');
-            document.body.style.overflow = ''; // Восстанавливаем прокрутку
+            document.body.style.overflow = '';
         });
     } else {
         console.error('Модальное окно #avatarModal не найдено');
+    }
+
+    // Отладка кликабельных ссылок
+    const emailLink = document.querySelector('a[href^="mailto:"]');
+    if (emailLink) {
+        console.log('Email ссылка инициализирована:', emailLink.href);
+    }
+    const usernameLink = document.querySelector('a[href^="https://t.me/@"]');
+    if (usernameLink) {
+        console.log('Username ссылка инициализирована:', usernameLink.href);
+    }
+    const telegramLink = document.querySelector('a[href^="tg://user?id="]');
+    if (telegramLink) {
+        console.log('Telegram ID ссылка инициализирована:', telegramLink.href);
     }
 });
 </script>

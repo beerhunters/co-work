@@ -32,12 +32,44 @@
     .action-icon.delete:hover {
         color: #b02a37;
     }
+    /* Стили для формы поиска */
+    .search-form {
+        margin-bottom: 20px;
+    }
+    .search-form .form-control {
+        font-size: 14px;
+    }
+    .search-form .btn {
+        font-size: 14px;
+    }
 </style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Список бронирований</h3>
     </div>
     <div class="card-body">
+        <!-- Форма поиска -->
+        <form method="GET" action="{{ url_for('bookings') }}" class="search-form">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="user_query" class="form-label">Пользователь</label>
+                    <input type="text" class="form-control" id="user_query" name="user_query" value="{{ request.args.get('user_query', '') }}" placeholder="Введите имя пользователя">
+                </div>
+                <div class="col-md-4">
+                    <label for="date_query" class="form-label">Дата визита</label>
+                    <input type="date" class="form-control" id="date_query" name="date_query" value="{{ request.args.get('date_query', '') }}">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-search"></i> Поиск
+                    </button>
+                    <a href="{{ url_for('bookings') }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Сбросить
+                    </a>
+                </div>
+            </div>
+        </form>
+        <!-- Таблица бронирований -->
         <table class="table table-bordered table-hover booking-table">
             <thead>
                 <tr>

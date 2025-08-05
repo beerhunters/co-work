@@ -48,7 +48,7 @@
             {% endif %}
             <div class="form-group">
                 <label>Промокод</label>
-                <p>{{ promocode.name or 'Не указан' }}</p>
+                <p>{{ promocode.name if promocode else 'Не указан' }}</p>
             </div>
             <div class="form-group">
                 <label>Сумма (₽)</label>
