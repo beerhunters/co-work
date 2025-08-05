@@ -30,6 +30,7 @@ services:
       context: .
       dockerfile: Dockerfile.web
     environment:
+      - SECRET_KEY=${SECRET_KEY}
       - ADMIN_LOGIN=${ADMIN_LOGIN}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - BOT_TOKEN=${BOT_TOKEN}
