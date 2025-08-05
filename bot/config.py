@@ -25,6 +25,7 @@ Configuration.secret_key = os.getenv("YOKASSA_SECRET_KEY")
 RUBITIME_API_KEY = os.getenv("RUBITIME_API_KEY")
 RUBITIME_BASE_URL = "https://rubitime.ru/api2/"
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+ADMIN_URL = "https://t.me/partacoworking"
 
 RULES = "https://parta-works.ru/main_rules"
 
@@ -46,6 +47,11 @@ def create_user_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="👥 Пригласить друга", callback_data="invite_friend"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📞 Связаться с Администратором", url=ADMIN_URL
                 )
             ],
         ]

@@ -3,18 +3,79 @@ from flask_login import login_required
 from datetime import datetime
 from typing import Any
 
-from models.models import Booking, User, Tariff
+from models.models import Booking, User, Tariff, Promocode
 from web.routes.utils import (
     get_unread_notifications_count,
     get_recent_notifications,
     send_telegram_message_sync,
 )
 from web.app import db
+import pytz
 
 from utils.logger import get_logger
 
 # Тихая настройка логгера для модуля
 logger = get_logger(__name__)
+
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
+
+
+def format_booking_confirmation_notification(
+    user: User, booking: Booking, tariff: Tariff, promocode: Promocode = None
+) -> str:
+    """
+    Форматирует уведомление о подтверждении бронирования для отправки пользователю.
+
+    Args:
+        user: Объект пользователя.
+        booking: Объект бронирования.
+        tariff: Объект тарифа.
+        promocode: Объект промокода (если применён, по умолчанию None).
+
+    Returns:
+        str: Отформатированное HTML-сообщение для отправки в Telegram.
+    """
+    tariff_emojis = {
+        "meeting": "🤝",
+        "workspace": "💼",
+        "event": "🎉",
+        "office": "🏢",
+        "coworking": "💻",
+    }
+
+    purpose = tariff.purpose.lower()
+    tariff_emoji = tariff_emojis.get(purpose, "📋")
+    visit_date = booking.visit_date
+    visit_time = booking.visit_time
+
+    if visit_time:
+        datetime_str = (
+            f"{visit_date.strftime('%d.%m.%Y')} в {visit_time.strftime('%H:%M')}"
+        )
+    else:
+        datetime_str = f"{visit_date.strftime('%d.%m.%Y')} (весь день)"
+
+    discount_info = ""
+    if promocode and booking.promocode_id:
+        discount_info = f"\n💰 <b>Скидка:</b> {promocode.discount}% (промокод: <code>{promocode.name}</code>)"
+
+    duration_info = ""
+    if booking.duration:
+        duration_info = f"\n⏱ <b>Длительность:</b> {booking.duration} час(ов)"
+
+    message = f"""✅ <b>Ваша бронь подтверждена!</b> {tariff_emoji}
+
+📋 <b>Детали брони:</b>
+├ <b>Тариф:</b> {tariff.name}
+├ <b>Дата и время:</b> {datetime_str}{duration_info}
+└ <b>Сумма:</b> {booking.amount:.2f} ₽{discount_info}
+
+⏰ <i>Время подтверждения: {datetime.now(MOSCOW_TZ).strftime('%d.%m.%Y %H:%M:%S')}</i>"""
+
+    logger.debug(
+        f"Сформировано сообщение о подтверждении брони {booking.id}:\n{message}"
+    )
+    return message.strip()
 
 
 def init_booking_routes(app: Flask) -> None:
@@ -151,26 +212,38 @@ def init_booking_routes(app: Flask) -> None:
             booking_id: ID бронирования.
 
         Returns:
-            Редирект на страницу бронирования.
+            Any: Редирект на страницу бронирования.
         """
         booking = db.session.get(Booking, booking_id)
         if not booking:
             flash("Бронирование не найдено")
+            logger.warning(f"Бронирование {booking_id} не найдено")
             return redirect(url_for("bookings"))
+
         if booking.confirmed:
             flash("Бронирование уже подтверждено")
+            logger.info(f"Бронирование {booking_id} уже подтверждено")
             return redirect(url_for("booking_detail", booking_id=booking_id))
+
         try:
             booking.confirmed = True
-            db.session.commit()
             user = db.session.get(User, booking.user_id)
             tariff = db.session.get(Tariff, booking.tariff_id)
-            message = (
-                f"Ваша бронь подтверждена!\n"
-                f"Тариф: {tariff.name}\n"
-                f"Дата: {booking.visit_date}\n"
-                f"Время: {booking.visit_time}\n"
-                f"Продолжительность: {booking.duration} ч"
+            promocode = (
+                db.session.get(Promocode, booking.promocode_id)
+                if booking.promocode_id
+                else None
+            )
+
+            if not user or not tariff:
+                flash("Ошибка: пользователь или тариф не найдены")
+                logger.error(
+                    f"Пользователь {booking.user_id} или тариф {booking.tariff_id} не найдены для брони {booking_id}"
+                )
+                return redirect(url_for("booking_detail", booking_id=booking_id))
+
+            message = format_booking_confirmation_notification(
+                user, booking, tariff, promocode
             )
             success = send_telegram_message_sync(user.telegram_id, message)
             if success:
@@ -179,8 +252,10 @@ def init_booking_routes(app: Flask) -> None:
                 )
             else:
                 logger.error(
-                    f"Не удалось отправить сообщение пользователю {user.telegram_id}"
+                    f"Не удалось отправить сообщение пользователю {user.telegram_id} для брони {booking_id}"
                 )
+
+            db.session.commit()
             flash("Бронирование подтверждено")
             logger.info(f"Бронирование {booking_id} подтверждено")
         except Exception as e:

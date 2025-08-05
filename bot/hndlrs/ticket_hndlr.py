@@ -4,6 +4,7 @@ from typing import Optional
 from aiogram import Router, Bot, F, Dispatcher
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message,
@@ -96,60 +97,18 @@ async def start_helpdesk(
     await state.set_state(TicketForm.DESCRIPTION)
     # Сохраняем telegram_id пользователя
     await state.update_data(telegram_id=callback_query.from_user.id)
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
+        # await callback_query.message.answer(
         "Опишите вашу проблему или пожелание:",
         reply_markup=create_back_keyboard(),
     )
     logger.info(f"Пользователь {callback_query.from_user.id} начал создание заявки")
-    try:
-        await callback_query.message.delete()
-    except TelegramBadRequest as e:
-        logger.warning(
-            f"Не удалось удалить сообщение для пользователя {callback_query.from_user.id}: {str(e)}"
-        )
-    await callback_query.answer()
-
-
-@router.callback_query(TicketForm.DESCRIPTION, F.data == "cancel")
-@router.callback_query(TicketForm.ASK_PHOTO, F.data == "cancel")
-@router.callback_query(TicketForm.PHOTO, F.data == "cancel")
-async def cancel_ticket_creation(
-    callback_query: CallbackQuery, state: FSMContext
-) -> None:
-    """
-    Обработка отмены создания заявки.
-
-    Args:
-        callback_query: Callback-запрос.
-        state: Контекст состояния FSM.
-    """
-    await state.clear()
-    await callback_query.message.edit_text(
-        text="Создание заявки отменено.",
-        reply_markup=create_user_keyboard(),
-    )
-    logger.info(f"Пользователь {callback_query.from_user.id} отменил создание заявки")
-    await callback_query.answer()
-
-
-@router.callback_query(
-    F.data == "main_menu",
-    TicketForm.DESCRIPTION or TicketForm.ASK_PHOTO or TicketForm.PHOTO,
-)
-async def cancel_to_main_menu(callback_query: CallbackQuery, state: FSMContext) -> None:
-    """
-    Обработка возврата в главное меню.
-
-    Args:
-        callback_query: Callback-запрос.
-        state: Контекст состояния FSM.
-    """
-    await state.clear()
-    await callback_query.message.edit_text(
-        text="Создание заявки отменено.",
-        reply_markup=create_user_keyboard(),
-    )
-    logger.info(f"Пользователь {callback_query.from_user.id} вернулся в главное меню")
+    # try:
+    #     await callback_query.message.delete()
+    # except TelegramBadRequest as e:
+    #     logger.warning(
+    #         f"Не удалось удалить сообщение для пользователя {callback_query.from_user.id}: {str(e)}"
+    #     )
     await callback_query.answer()
 
 
@@ -287,6 +246,33 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot) -> None:
             reply_markup=create_user_keyboard(),
         )
     await state.clear()
+
+
+@router.callback_query(
+    StateFilter(TicketForm.DESCRIPTION, TicketForm.ASK_PHOTO, TicketForm.PHOTO),
+    F.data == "cancel",
+)
+@router.callback_query(
+    StateFilter(TicketForm.DESCRIPTION, TicketForm.ASK_PHOTO, TicketForm.PHOTO),
+    F.data == "main_menu",
+)
+async def cancel_ticket_creation(
+    callback_query: CallbackQuery, state: FSMContext
+) -> None:
+    """
+    Обработка отмены создания заявки.
+
+    Args:
+        callback_query: Callback-запрос.
+        state: Контекст состояния FSM.
+    """
+    await state.clear()
+    await callback_query.message.edit_text(
+        text="Создание заявки отменено.",
+        reply_markup=create_user_keyboard(),
+    )
+    logger.info(f"Пользователь {callback_query.from_user.id} отменил создание заявки")
+    await callback_query.answer()
 
 
 def register_ticket_handlers(dp: Dispatcher) -> None:

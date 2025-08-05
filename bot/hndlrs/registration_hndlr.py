@@ -221,8 +221,9 @@ async def invite_friend(
         f"Пользователь {user_id} инициировал шаринг реферальной ссылки: {deeplink}"
     )
 
-    await callback_query.message.delete()
-    await callback_query.message.answer(
+    # await callback_query.message.delete()
+    await callback_query.message.edit_text(
+        # await callback_query.message.answer(
         text="Выберите, с кем поделиться ссылкой:",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
@@ -427,7 +428,7 @@ async def process_email(message: Message, state: FSMContext, bot: Bot) -> None:
 
 @router.callback_query(F.data == "info")
 async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
-    await callback_query.message.delete()
+    # await callback_query.message.delete()
     info_message = (
         "💼 <b>PARTA бот</b> для вашего удобства!<u>\n\n"
         "🛜 WiFi: <b>Parta</b> Пароль:</u> <code>Parta2024</code>\n\n"
@@ -435,8 +436,11 @@ async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
         "- 🖥 <b>Бронирование рабочего места</b> на выбранную дату с <b>оплатой прямо в боте</b>.\n\n"
         "🔔 <b>Подпишитесь на наш новостной канал</b>, чтобы всегда быть в курсе последних обновлений и акций: <a href='https://t.me/partacowo'>Наш канал</a>"
     )
-    await callback_query.message.answer(
-        info_message, reply_markup=create_back_keyboard(), parse_mode="HTML"
+    await callback_query.message.edit_text(
+        # await callback_query.message.answer(
+        info_message,
+        reply_markup=create_back_keyboard(),
+        parse_mode="HTML",
     )
     await callback_query.answer()
 
@@ -444,8 +448,9 @@ async def info(callback_query: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "main_menu")
 async def main_menu(callback_query: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback_query.message.delete()
-    await callback_query.message.answer(
+    # await callback_query.message.delete()
+    await callback_query.message.edit_text(
+        # await callback_query.message.answer(
         f"Выберите действие:",
         reply_markup=create_user_keyboard(),
         parse_mode="HTML",

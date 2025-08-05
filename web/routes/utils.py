@@ -241,7 +241,7 @@ async def send_telegram_message_async(telegram_id: int, message: str, bot: Bot) 
         bool: True, если сообщение отправлено, иначе False.
     """
     try:
-        await bot.send_message(chat_id=telegram_id, text=message)
+        await bot.send_message(chat_id=telegram_id, text=message, parse_mode="HTML")
         logger.info(f"Сообщение отправлено пользователю {telegram_id}")
         return True
     except Exception as e:
